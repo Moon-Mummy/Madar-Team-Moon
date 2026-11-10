@@ -1072,7 +1072,7 @@ export function buildWorld(scene) {
   const streak = new THREE.Sprite(new THREE.SpriteMaterial({ color: 0xffd9a8, transparent: true, opacity: 0.16, depthWrite: false, blending: THREE.AdditiveBlending }));
   streak.scale.set(190, 7, 1);
   glare.add(halo, streak, core);
-  glare.position.copy(sunDir).multiplyScalar(360);
+  glare.position.copy(sunDir).multiplyScalar(420);
   scene.add(glare);
 
   const terrain = terrainMesh(scene);
@@ -1177,8 +1177,22 @@ export function buildWorld(scene) {
     for (const s of sites) s.children.forEach(c => { if (c.userData.flag) c.material.color.setHex(Math.sin(t * 2.2) > -0.4 ? 0x86e6c0 : 0x2f6b58); });
   }
 
+  // At 89.7 S the Sun never sets on the ridge in summer: it circles the sky about 6 degrees above
+  // the horizon, so shadows swing around through the day while the sky stays black.
+  function setSunTime(minutes, px = 0, pz = 0) {
+    const az = ((minutes % 1440) / 1440) * Math.PI * 2 + 0.9;
+    const el = 0.105 + 0.018 * Math.sin(az * 2);
+    const dir = new THREE.Vector3(Math.cos(az) * Math.cos(el), Math.sin(el), Math.sin(az) * Math.cos(el));
+    sun.position.set(px + dir.x * 170, dir.y * 170, pz + dir.z * 170);
+    sun.target.position.set(px, 0, pz);
+    sun.target.updateMatrixWorld();
+    glare.position.copy(dir).multiplyScalar(420);
+  }
+  setSunTime(7 * 60 + 30, 0, 0);
+
   return {
-    scene, terrain, buildings, rover, rafiq, drone, sites, sun, fill, dust, earth, glints,
+    scene, terrain, buildings, rover, rafiq, drone, sites, sun, fill, dust, earth, glints, glare,
+    setSunTime,
     update,
     stationPoint: id => {
       const st = STATIONS.find(s => s.id === id);

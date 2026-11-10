@@ -389,11 +389,9 @@ function loop() {
   world.update(dt, tNow);
   if (started && sim && !ui.modalOpen) {
     sim.update(dt);
-    // the sun follows the player so shadows stay sharp around them
+    // the sun follows the player so shadows stay sharp around them, and its azimuth tracks the clock
     const p = sim.driving ? sim.rover.pos : sim.player.pos;
-    world.sun.position.set(p.x - 92, 46, p.z + 74);
-    world.sun.target.position.set(p.x, 0, p.z);
-    world.sun.target.updateMatrixWorld();
+    world.setSunTime(sim.minutes, p.x, p.z);
     // a soft fill carried by the camera keeps shadowed faces readable
     world.fill.position.set(camera.position.x, camera.position.y + 6, camera.position.z);
     world.fill.target.position.set(p.x, 1, p.z);
