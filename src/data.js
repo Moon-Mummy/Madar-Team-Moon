@@ -1,13 +1,17 @@
 // Language-neutral data for Madar-Team-Moon.
 // Every human-readable string lives in src/lang/*.js and is addressed by the keys used here.
 // Nothing in this file is generated at runtime: it is the single source of truth for the world.
+// Distances are game metres; the outpost is a 1:1 walkable slice of Connecting Ridge, and the
+// real measurements behind the labels live in src/lunar.js.
+import { MOON } from './lunar.js';
+import { WALK_MS, RUN_MS, HOP_SPEED, G, ROVER_PHYS, SLOPE_LIMIT_DEG } from './physics.js';
 
 export const GAME = 'madar-team-moon';
 export const SAVE_KEY = 'madar-team-moon.save.v1';
 
 // ---------------------------------------------------------------------------------------------
-// Crew. The five canonical bots of the Luna Academy blueprint. They are authored characters,
-// never generative AI, and they speak in suggestions ("the sensor suggests…") rather than orders.
+// Crew. Five authored NPCs — people, not robots. They walk the base, speak their lines aloud and
+// offer suggestions ("the sensor suggests…") rather than orders. No generative AI is involved.
 // ---------------------------------------------------------------------------------------------
 export const CREW = [
   { id: 'maya', role: 'commander', color: '#69d4e7', hue: 0x69d4e7, home: 'control', shift: 'day' },
@@ -17,7 +21,7 @@ export const CREW = [
   { id: 'sofia', role: 'medic', color: '#ff9d93', hue: 0xff9d93, home: 'medical', shift: 'day' },
 ];
 
-export const BOT_STATES = ['idle', 'working', 'investigating', 'repairing', 'reporting', 'interacting', 'resting', 'returning'];
+export const NPC_STATES = ['idle', 'working', 'investigating', 'repairing', 'reporting', 'interacting', 'resting', 'returning'];
 
 // ---------------------------------------------------------------------------------------------
 // Stations. x/z is the footprint centre, door is where the player stands to interact,
@@ -62,15 +66,27 @@ export const NAV_EDGES = [
   ['W1', 'W2'], ['W2', 'relayWalk'], ['relayWalk', 'relayDoor'], ['W2', 'padWalk'], ['padWalk', 'padDoor'],
 ];
 
+// Three real sampling stories: a ridge of highland anorthosite, a mare basalt flow, and the
+// permanently shadowed floor of Cabeus crater where LCROSS measured water ice.
 export const SAMPLE_SITES = [
-  { id: 'siteA', x: 44, z: 6, radius: 6 },
-  { id: 'siteB', x: 30, z: 40, radius: 7 },
-  { id: 'siteC', x: 56, z: 48, radius: 8 },
+  { id: 'siteA', x: 44, z: 6, radius: 6, feature: 'connecting-ridge', rock: 'anorthosite', ageGy: 4.4 },
+  { id: 'siteB', x: 30, z: 40, radius: 7, feature: null, rock: 'basalt', ageGy: 3.4 },
+  { id: 'siteC', x: 74, z: -62, radius: 8, feature: 'cabeus', rock: 'ice', ageGy: 3.9, psr: true },
 ];
 
-export const ROVER = { park: [2.6, 9.2], heading: -2.14, spawnRadius: 90, maxSpeed: 11, slopeLimit: 16 };
+// Rover figures come straight from the Apollo LRV: 210 kg empty, 490 kg payload, 18 km/h,
+// 36 V silver-zinc packs, 36 km working range. `slopeLimit` is the regolith angle of repose.
+export const ROVER = {
+  park: [2.6, 9.2], heading: -2.14, spawnRadius: 146,
+  maxSpeed: ROVER_PHYS.topSpeed, slopeLimit: SLOPE_LIMIT_DEG,
+  massKg: ROVER_PHYS.massKg, payloadKg: ROVER_PHYS.payloadKg,
+};
 
-export const PLAYER = { spawn: [0, 0, 2], eye: 1.55, walk: 5.2, run: 8.6, hop: 2.7, gravity: 1.62, bound: 108 };
+// A suited walker: slow, deliberate, with a 1.45 m hop and true 1.62 m/s² gravity.
+export const PLAYER = {
+  spawn: [0, 0, 2], eye: 1.55, walk: WALK_MS, run: RUN_MS, hop: HOP_SPEED,
+  gravity: G, bound: 150, suitKg: MOON.suitedMassKg,
+};
 
 export const CRATERS = [
   { x: 62, z: 30, r: 16, d: 3.6 }, { x: 44, z: 6, r: 5.5, d: 1.4 }, { x: 30, z: 40, r: 6.5, d: 1.5 },
@@ -84,17 +100,17 @@ export const CRATERS = [
 // report → act → reflect. `kind` selects the interaction in activities.js.
 // ---------------------------------------------------------------------------------------------
 export const INCIDENTS = [
-  { id: 'solar', station: 'power', bot: 'leo', kind: 'oddone', skills: ['sys', 'energy'], gravity: 3 },
-  { id: 'water', station: 'life', bot: 'omar', kind: 'order', skills: ['reason', 'water'], gravity: 3 },
-  { id: 'green', station: 'green', bot: 'amina', kind: 'experiment', skills: ['design', 'bio'], gravity: 2 },
-  { id: 'rover', station: 'garage', bot: 'leo', kind: 'route', skills: ['nav', 'plan'], gravity: 2 },
-  { id: 'fatigue', station: 'medical', bot: 'sofia', kind: 'choice', skills: ['empathy', 'health'], gravity: 3 },
-  { id: 'dust', station: 'airlock', bot: 'maya', kind: 'order', skills: ['risk', 'maintain'], gravity: 2 },
-  { id: 'comms', station: 'relay', bot: 'leo', kind: 'diagram', skills: ['sys', 'comms'], gravity: 2 },
-  { id: 'budget', station: 'workshop', bot: 'maya', kind: 'budget', skills: ['plan', 'budget'], gravity: 1 },
-  { id: 'sample', station: 'lab', bot: 'amina', kind: 'match', skills: ['observe', 'science'], gravity: 2 },
-  { id: 'schedule', station: 'control', bot: 'maya', kind: 'schedule', skills: ['plan', 'fair'], gravity: 2 },
-  { id: 'storm', station: 'hab', bot: 'maya', kind: 'order', skills: ['risk', 'safety'], gravity: 3 },
+  { id: 'solar', station: 'power', npc: 'leo', kind: 'oddone', skills: ['sys', 'energy'], gravity: 3 },
+  { id: 'water', station: 'life', npc: 'omar', kind: 'order', skills: ['reason', 'water'], gravity: 3 },
+  { id: 'green', station: 'green', npc: 'amina', kind: 'experiment', skills: ['design', 'bio'], gravity: 2 },
+  { id: 'rover', station: 'garage', npc: 'leo', kind: 'route', skills: ['nav', 'plan'], gravity: 2 },
+  { id: 'fatigue', station: 'medical', npc: 'sofia', kind: 'choice', skills: ['empathy', 'health'], gravity: 3 },
+  { id: 'dust', station: 'airlock', npc: 'maya', kind: 'order', skills: ['risk', 'maintain'], gravity: 2 },
+  { id: 'comms', station: 'relay', npc: 'leo', kind: 'diagram', skills: ['sys', 'comms'], gravity: 2 },
+  { id: 'budget', station: 'workshop', npc: 'maya', kind: 'budget', skills: ['plan', 'budget'], gravity: 1 },
+  { id: 'sample', station: 'lab', npc: 'amina', kind: 'match', skills: ['observe', 'science'], gravity: 2 },
+  { id: 'schedule', station: 'control', npc: 'maya', kind: 'schedule', skills: ['plan', 'fair'], gravity: 2 },
+  { id: 'storm', station: 'hab', npc: 'maya', kind: 'order', skills: ['risk', 'safety'], gravity: 3 },
 ];
 
 export const incidentById = id => INCIDENTS.find(i => i.id === id);
@@ -124,7 +140,7 @@ export const TALK = {
 };
 
 // Field guide structure. Each chapter is a list of {h, p} resolved from the locale.
-export const GUIDE = ['day', 'challenges', 'jobs', 'loop', 'places', 'glossary', 'real', 'safety'];
+export const GUIDE = ['moon', 'day', 'challenges', 'loop', 'places', 'glossary', 'real', 'safety'];
 
 // English letter keys used by the glossary and jobs tables.
 export const JOBS = ['commander', 'medic', 'life', 'geologist', 'power', 'robotics', 'comms', 'agronomist', 'builder', 'pilot'];

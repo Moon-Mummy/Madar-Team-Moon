@@ -4,6 +4,8 @@ import { t, setLang, lang, dir, onLangChange } from './i18n.js';
 import { STATIONS, CREW, INCIDENTS, CARDS, SAMPLE_SITES, GUIDE, JOBS, PLACES, GLOSSARY, SUITS, SAVE_KEY, stationById, incidentById, ROVER } from './data.js';
 import { sfx, setSound } from './audio.js';
 import { openSituation } from './activities.js';
+import { FEATURES, MOON, SOURCES } from './lunar.js';
+import { say, setSpeechEnabled, speechAvailable, stopSpeaking } from './speech.js';
 
 const $ = id => document.getElementById(id);
 const E = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text !== undefined) n.textContent = text; return n; };
@@ -177,7 +179,7 @@ export class UI {
       this.lastCrew = now;
       const wrap = $('crew');
       wrap.replaceChildren();
-      for (const b of sim.crew.bots) {
+      for (const b of sim.crew.npcs) {
         const row = E('div', 'cr');
         const dot = E('div', 'dot', t(`crew.${b.id}.name`).slice(0, 1));
         dot.style.background = CREW.find(c2 => c2.id === b.id).color;
@@ -198,7 +200,60 @@ export class UI {
   }
 
   // ------------------------------------------------------------------ world labels
+  /** A character speaking: a short line above their head, plus a subtitle if it is long. */
+  /** A small "say that again" button with a drawn speaker, so it works without emoji fonts. */
+  sayAgain(text, who) {
+    const b = btn('say-again', '', () => this.sayLine(who, text));
+    b.setAttribute('aria-label', t('ui.sayAgain'));
+    b.title = t('ui.sayAgain');
+    b.innerHTML = '<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 9.5h3.2L12 5.6v12.8L7.2 14.5H4z"/><path d="M15.6 8.8a4.6 4.6 0 0 1 0 6.4"/><path d="M18.2 6.6a7.8 7.8 0 0 1 0 10.8"/></svg>';
+    return b;
+  }
+
+  /** Optional artwork: returns a figure, or null if the file is not there. */
+  art(src, caption, cls = 'guide-art') {
+    if (!src) return null;
+    const fig = E('figure', cls);
+    const img = document.createElement('img');
+    img.src = `assets/${src}`;
+    img.alt = caption || '';
+    img.loading = 'lazy';
+    img.decoding = 'async';
+    img.addEventListener('error', () => fig.remove());
+    fig.append(img);
+    if (caption) fig.append(E('figcaption', null, caption));
+    return fig;
+  }
+
+  npcSay(npc, text, { hold } = {}) {
+    if (!npc || !text) return;
+    npc.line = text;
+    npc.speaking = true;
+    const ms = hold || Math.min(9000, 1600 + String(text).length * 52);
+    clearTimeout(npc._lineTimer);
+    npc._lineTimer = setTimeout(() => { npc.line = null; npc.speaking = false; }, ms);
+    const el = this.labelEls.get(`bubble.${npc.id}`);
+    if (el) { el.replaceChildren(); el.append(E('span', 'who', t(`crew.${npc.id}.name`)), document.createTextNode(text)); }
+  }
+
+  addFeatureLabel(key, name, point, camera) {
+    let el = this.labelEls.get(key);
+    if (!el) { el = E('div', 'feature'); $('labels').append(el); this.labelEls.set(key, el); el._t = name; el.innerHTML = ''; el.append(E('b', null, name)); }
+    const v = (this._v || (this._v = new THREE.Vector3())).copy(point).project(camera);
+    const w = window.innerWidth, h = window.innerHeight;
+    if (v.z > 1 || v.z < -1) { el.style.display = 'none'; return; }
+    const x = (v.x * 0.5 + 0.5) * w, y = (-v.y * 0.5 + 0.5) * h;
+    if (x < -60 || x > w + 60 || y < 40 || y > h - 60) { el.style.display = 'none'; return; }
+    el.style.display = 'block';
+    el.style.transform = `translate(-50%,-50%) translate(${x.toFixed(1)}px,${y.toFixed(1)}px)`;
+    el.style.opacity = '0.5';
+  }
+
   drawLabels(camera, sim) {
+    if (this.modalOpen) {
+      for (const el of this.labelEls.values()) el.style.display = 'none';
+      return;
+    }
     const w = window.innerWidth, h = window.innerHeight;
     const v = this._v || (this._v = new THREE.Vector3());
     const origin = camera.position;
@@ -232,11 +287,34 @@ export class UI {
       if (!shown.has(st.id)) { this.labelEls.get(key)?.style.setProperty('display', 'none'); continue; }
       add(key, t(`station.${st.id}.name`), this.world.labelPoint(st.id), sim.activeIncidentFor(st.id) ? 'sel' : '');
     }
-    for (const b of sim.crew.bots) {
+    for (const b of sim.crew.npcs) {
       const d = Math.hypot(b.pos.x - px, b.pos.z - pz);
       const key = `bot.${b.id}`;
-      if (d > 30) { this.labelEls.get(key)?.style.setProperty('display', 'none'); continue; }
+      if (d > 34) { this.labelEls.get(key)?.style.setProperty('display', 'none'); this.labelEls.get(`bubble.${b.id}`)?.style.setProperty('display', 'none'); continue; }
       add(key, t(`crew.${b.id}.name`), { x: b.pos.x, y: b.pos.y + 2.15, z: b.pos.z }, 'bot');
+      // speech bubble above the speaker while their line is playing
+      const bkey = `bubble.${b.id}`;
+      if (b.line && d < 26) {
+        let el = this.labelEls.get(bkey);
+        if (!el) { el = E('div', 'bubble'); $('labels').append(el); this.labelEls.set(bkey, el); }
+        if (el._line !== b.line) {
+          el.replaceChildren(E('span', 'who', t(`crew.${b.id}.name`)), document.createTextNode(b.line));
+          el._line = b.line;
+        }
+        this.addFeatureLabel(bkey, '', { x: b.pos.x, y: b.pos.y + 2.55, z: b.pos.z }, camera);
+        el.className = 'bubble'; el.style.display = 'block';
+      } else {
+        this.labelEls.get(bkey)?.style.setProperty('display', 'none');
+      }
+    }
+    // Real, named places on the horizon: Shackleton, Cabeus, Malapert.
+    if (this.world?.featurePoints) {
+      for (const f of this.world.featurePoints) {
+        const key = `feat.${f.id}`;
+        const d = Math.hypot(f.point.x - px, f.point.z - pz);
+        if (d > 240) { this.labelEls.get(key)?.style.setProperty('display', 'none'); continue; }
+        this.addFeatureLabel(key, f.name, f.point, camera);
+      }
     }
     if (!sim.driving) add('rover', `🛻 ${t('ui.drive')}`, { x: sim.rover.pos.x, y: sim.rover.pos.y + 2.3, z: sim.rover.pos.z }, 'bot');
     else this.labelEls.get('rover')?.style.setProperty('display', 'none');
@@ -283,7 +361,7 @@ export class UI {
     ctx.beginPath(); ctx.moveTo(0, -6); ctx.lineTo(4.5, 5); ctx.lineTo(0, 2.4); ctx.lineTo(-4.5, 5); ctx.closePath(); ctx.fill();
     ctx.restore();
     // bots
-    for (const b of sim.crew.bots) {
+    for (const b of sim.crew.npcs) {
       const [x, y] = mp(b.pos.x, b.pos.z);
       ctx.fillStyle = CREW.find(c => c.id === b.id).color;
       ctx.beginPath(); ctx.arc(x, y, 1.9, 0, Math.PI * 2); ctx.fill();
@@ -398,7 +476,7 @@ export class UI {
       const badge = E('span', 'badge ' + (st.state === 'new' ? 'new' : ''), st.state === 'new' ? t('ui.boardNew') : st.state === 'snoozed' ? t('ui.boardLeave') : t('ui.boardMine'));
       head.append(badge);
       card.append(head);
-      card.append(E('div', 'r', `${t(`station.${inc.station}.name`)} · ${t(`crew.${inc.bot}.name`)}`));
+      card.append(E('div', 'r', `${t(`station.${inc.station}.name`)} · ${t(`crew.${inc.npc}.name`)}`));
       card.append(E('p', null, t(`inc.${inc.id}.report`)));
       const bar = E('div', 'sev');
       const fill = E('i'); fill.style.width = `${(inc.gravity / 3) * 100}%`; bar.append(fill);
@@ -493,40 +571,50 @@ export class UI {
   // ------------------------------------------------------------------ bot conversation
   openTalk(id) {
     const sim = this.sim;
-    const bot = sim.crew.bot(id);
-    if (bot) sim.crew.talkTo(id, performance.now() / 1000 + 90);
+    const npc = sim.crew.npc(id);
+    const crew = CREW.find(c => c.id === id) || CREW[0];
+    const lang = sim.settings.lang || lang();
+    if (npc) sim.crew.talkTo(id, performance.now() / 1000 + 90);
+
     const topics = { maya: ['plan', 'day', 'storm', 'help'], omar: ['water', 'air', 'fix', 'help'], amina: ['plants', 'ice', 'science', 'help'], leo: ['rover', 'power', 'comms', 'help'], sofia: ['health', 'sleep', 'dust', 'help'] }[id] || ['help'];
-    const body = E('div');
-    const greet = E('div', 'say');
-    const dot = E('div', 'dot', t(`crew.${id}.name`).slice(0, 1));
-    dot.style.background = CREW.find(c => c.id === id).color;
-    const bubble = E('div');
-    bubble.append(E('p', null, t(`crew.${id}.bio`)));
-    greet.append(dot, bubble);
-    body.append(greet);
-    body.append(E('h4', null, t('ui.ask')));
+    const body = E('div', 'talk');
+
+    // The greeting is spoken, not printed. What is on screen is a subtitle with a replay button.
+    const line = E('div', 'line');
+    const text = E('p', null, t(`crew.${id}.greet`));
+    line.append(text, this.sayAgain(t(`crew.${id}.greet`), id));
+    body.append(line);
+
+    const chips = E('div', 'topics');
     for (const topic of topics) {
-      const b = btn('opt', t(`talk.${id}.${topic}`));
-      b.addEventListener('click', () => {
-        this.speak(t(`talk.${id}.${topic}`));
-        const say = E('div', 'say');
-        const d2 = E('div', 'dot', t(`crew.${id}.name`).slice(0, 1));
-        d2.style.background = CREW.find(c => c.id === id).color;
-        const bb = E('div');
-        bb.append(E('p', null, t(`talk.${id}.${topic}`)));
-        say.append(d2, bb);
-        body.append(say);
-        body.scrollTop = body.scrollHeight;
-        b.classList.add('on');
+      const chip = btn('opt', t(`ui.topics.${topic}`), () => {
+        const reply = t(`talk.${id}.${topic}`);
+        text.textContent = reply;
+        this.sayLine(id, reply);
       });
-      body.append(b);
+      chips.append(chip);
     }
+    body.append(chips);
+    if (!speechAvailable() || sim.settings.voices === false) body.append(E('p', 'voices-off', t('ui.voicesOff')));
+
     this.sheetShell({
       title: t(`crew.${id}.name`), sub: t(`crew.${id}.role`),
-      avatar: t(`crew.${id}.name`).slice(0, 1), color: CREW.find(c => c.id === id).color,
+      avatar: t(`crew.${id}.name`).slice(0, 1), color: crew.color,
       body, foot: btn('btn', t('ui.close'), () => this.closeSheet()),
     });
+    this.sayLine(id, t(`crew.${id}.greet`));
   }
+
+  /** Speak a line as a character and show it as a bubble over their head too. */
+  sayLine(id, text) {
+    const lang = this.sim?.settings?.lang || lang();
+    if (text) {
+      const npc = this.sim?.crew?.npc(id);
+      if (npc) this.npcSay(npc, text);
+      say(id, text, { lang });
+    }
+  }
+
 
   // ------------------------------------------------------------------ journal
   openJournal(tab = 'cards') {
@@ -592,6 +680,57 @@ export class UI {
   }
 
   // ------------------------------------------------------------------ field guide
+  /** A full-Moon map: the whole disc, the south pole marked, and where the outpost stands. */
+  moonMap() {
+    const wrap = E('div', 'moonmap');
+    const cv = document.createElement('canvas');
+    cv.width = 520; cv.height = 520;
+    cv.setAttribute('role', 'img');
+    cv.setAttribute('aria-label', t('guide.moon.alt'));
+    const x = cv.getContext('2d');
+    const R = 232, cx = 260, cy = 260;
+    // dark maria on a bright highland disc
+    const disc = x.createRadialGradient(cx - 60, cy - 70, 20, cx, cy, R);
+    disc.addColorStop(0, '#d9d6cd'); disc.addColorStop(0.75, '#bdbab1'); disc.addColorStop(1, '#8f8c85');
+    x.beginPath(); x.arc(cx, cy, R, 0, Math.PI * 2); x.fillStyle = disc; x.fill();
+    const maria = [[-60, -80, 78, 52], [30, -110, 58, 40], [-120, 10, 54, 70], [70, 40, 44, 36], [10, -20, 82, 44], [-30, 90, 60, 30], [120, -60, 40, 30]];
+    for (const [mx, my, rx, ry] of maria) {
+      x.beginPath(); x.ellipse(cx + mx, cy + my, rx, ry, 0.4, 0, Math.PI * 2);
+      x.fillStyle = 'rgba(96, 98, 104, 0.55)'; x.fill();
+    }
+    // craters, more of them toward the south pole
+    let seed = 7;
+    const rnd = () => (seed = (seed * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff;
+    for (let i = 0; i < 260; i++) {
+      const a = rnd() * Math.PI * 2, r = Math.sqrt(rnd()) * R * 0.97;
+      const px = cx + Math.cos(a) * r, py = cy + Math.sin(a) * r;
+      const s2 = 1 + rnd() * 6 * (0.4 + r / R);
+      x.beginPath(); x.arc(px, py, s2, 0, Math.PI * 2);
+      x.fillStyle = `rgba(120,118,112,${0.18 + rnd() * 0.25})`; x.fill();
+      x.beginPath(); x.arc(px - s2 * 0.25, py - s2 * 0.25, s2 * 0.7, 0, Math.PI * 2);
+      x.fillStyle = `rgba(245,242,235,${0.1 + rnd() * 0.2})`; x.fill();
+    }
+    // limb shading
+    const limb = x.createRadialGradient(cx, cy, R * 0.72, cx, cy, R);
+    limb.addColorStop(0, 'rgba(0,0,0,0)'); limb.addColorStop(1, 'rgba(0,0,0,0.55)');
+    x.beginPath(); x.arc(cx, cy, R, 0, Math.PI * 2); x.fillStyle = limb; x.fill();
+    // south pole crosshair
+    x.strokeStyle = 'rgba(105,212,231,0.9)'; x.lineWidth = 2;
+    x.beginPath(); x.arc(cx, cy + R * 0.94, 26, 0, Math.PI * 2); x.stroke();
+    x.setLineDash([4, 5]);
+    x.beginPath(); x.moveTo(cx, cy + R * 0.94); x.lineTo(cx + 96, cy + R * 0.94 - 62); x.stroke();
+    x.setLineDash([]);
+    x.fillStyle = '#eaf6ff'; x.font = '600 15px system-ui, sans-serif';
+    x.fillText(t('guide.moon.southPole'), cx + 104, cy + R * 0.94 - 58);
+    x.fillStyle = 'rgba(234,246,255,0.8)'; x.font = '13px system-ui, sans-serif';
+    x.fillText(t('guide.moon.outpost'), cx + 104, cy + R * 0.94 - 38);
+    // you-are-here dot
+    x.beginPath(); x.arc(cx, cy + R * 0.94, 4.5, 0, Math.PI * 2); x.fillStyle = '#69d4e7'; x.fill();
+    wrap.append(cv);
+    wrap.append(E('p', 'subtle', t('guide.moon.note')));
+    return wrap;
+  }
+
   openGuide(chapter = 'day') {
     const body = E('div');
     const tabs = E('div', 'tabs');
@@ -600,6 +739,11 @@ export class UI {
       for (const b of tabs.children) b.classList.toggle('on', b.dataset.tab === which);
       pane.replaceChildren();
       const ch = t(`guide.${which}`);
+      const art = { moon: ['moon.jpg', 'guide-art contain'], day: ['crew.jpg'], loop: ['greenhouse.jpg'], challenges: ['ice.jpg'], places: ['rover.jpg'], real: ['hero.jpg'] }[which];
+      if (art) {
+        const fig = this.art(art[0], t(`guide.${which}.t`), art[1] || 'guide-art');
+        if (fig) pane.append(fig);
+      }
       pane.append(E('h4', null, ch.t));
       for (const p of ch.p || []) pane.append(E('p', null, p));
       if (which === 'jobs') {
@@ -625,6 +769,16 @@ export class UI {
           c.append(E('p', null, t(`place.${id}.d`)));
           pane.append(c);
         }
+      }
+      if (which === 'moon') {
+        for (const f of FEATURES) {
+          const c = E('div', 'card2');
+          c.append(E('h5', null, f.name));
+          c.append(E('p', null, t(`place.feature.${f.id}`)));
+          if (f.src) c.append(E('p', 'subtle', `${f.src} · ${f.real && f.real.diameterKm ? `${f.real.diameterKm} km` : ''}`.trim()));
+          pane.append(c);
+        }
+        pane.append(this.moonMap());
       }
       if (which === 'glossary') {
         for (const id of GLOSSARY) {
@@ -691,6 +845,19 @@ export class UI {
       sseg.append(b);
     }
     sr.append(sseg);
+    // character voices (the crew speak their own lines)
+    const vr = row(t('ui.voices'));
+    const vseg = E('div', 'seg');
+    for (const on of [true, false]) {
+      const b = btn('btn' + (sim.settings.voices !== false === on ? ' on' : ''), on ? t('ui.soundOn') : t('ui.soundOff'), () => {
+        sim.settings.voices = on; sim.save();
+        setSpeechEnabled(on);
+        if (on) say('maya', t('crew.maya.greet'), { lang: sim.settings.lang || lang() });
+        this.closeSheet(); this.openSettings();
+      });
+      vseg.append(b);
+    }
+    vr.append(vseg);
     // read aloud
     const rr = row(t('ui.readAloud'));
     const rseg = E('div', 'seg');
@@ -733,7 +900,7 @@ export class UI {
     body.append(E('p', null, t('ui.aboutText')));
     body.append(E('div', 'note', t('ui.foot')));
     this.sheetShell({
-      title: t('ui.settings'), sub: 'Madar-Team-Moon 1.0', avatar: 'S', body, wide: false,
+      title: t('ui.settings'), sub: 'Madar-Team-Moon 2.0', avatar: 'S', body, wide: false,
       foot: btn('btn', t('ui.close'), () => this.closeSheet()),
     });
   }
@@ -752,15 +919,9 @@ export class UI {
 
   // ------------------------------------------------------------------ speech
   speak(text) {
+    // The narrator reads interface text when "read buttons aloud" is on.
     if (!this.sim?.settings.readAloud || !text) return;
-    if (!('speechSynthesis' in window)) return;
-    try {
-      window.speechSynthesis.cancel();
-      const u = new SpeechSynthesisUtterance(String(text).replace(/[•●]/g, ' '));
-      u.lang = lang() === 'ar' ? 'ar-SA' : 'en-US';
-      u.rate = 0.98;
-      window.speechSynthesis.speak(u);
-    } catch (e) { /* ignore */ }
+    say('narrator', text, { lang: lang() });
   }
 
   // ------------------------------------------------------------------ input

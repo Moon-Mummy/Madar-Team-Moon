@@ -2,6 +2,7 @@
 // Everything here is deterministic (a fixed seed), so the map looks identical on every device.
 import * as THREE from '../vendor/three.module.min.js';
 import { STATIONS, CRATERS, SAMPLE_SITES, ROVER, NAV_NODES } from './data.js';
+import { FEATURES, MOON } from './lunar.js';
 
 const rand = (() => { let s = 20261110; return () => (s = (s * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff; })();
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
@@ -18,7 +19,7 @@ export function heightAt(x, z) {
   const amp = smooth(44, 68, d) + 0.22;
   h += amp * (1.5 * Math.sin(x * 0.052) * Math.cos(z * 0.061) + 0.9 * Math.sin((x + z) * 0.031 + 1.7) + 0.55 * Math.cos(z * 0.083 - 0.4));
   // Relay hill (south-west), soft gaussian so the mast has height.
-  h += 9.0 * Math.exp(-(((x + 30) ** 2 + (CRATERS.length ? 0 : 0) + (z + 14) ** 2) / (2 * 15 * 15)));
+  h += 9.0 * Math.exp(-(((x + 30) ** 2 + (z + 14) ** 2) / (2 * 15 * 15)));
   // Craters: shallow bowl plus a rim that rises above the surroundings.
   for (const c of CRATERS) {
     const dd = Math.hypot(x - c.x, z - c.z) / c.r;
@@ -28,10 +29,29 @@ export function heightAt(x, z) {
       h += bowl + rim;
     }
   }
+  // The named real features of the south pole. Shackleton and Cabeus are deep bowls with raised
+  // rims; Malapert is a massif. Their real measurements are in src/lunar.js.
+  for (const f of FEATURES) {
+    if (!f.depth) {
+      const dd = Math.hypot(x - f.at[0], z - f.at[1]) / f.r;
+      if (dd < 2.6) h += f.rim * Math.exp(-(dd * dd) * 0.9) * (1 + 0.35 * Math.cos(Math.atan2(z - f.at[1], x - f.at[0]) * 3));
+      continue;
+    }
+    const dd = Math.hypot(x - f.at[0], z - f.at[1]) / f.r;
+    if (dd < 2.4) {
+      h += -f.depth * (1 - smooth(0, 1.02, dd)) + f.rim * Math.exp(-(((dd - 1.0) / 0.33) ** 2));
+    }
+  }
   // Landing-pad shelf is dead flat.
   const pd = Math.hypot(x + 46, z - 22);
   h *= smooth(8, 15, pd);
   return h;
+}
+
+/** True inside a permanently shadowed region: no sunlight reaches the floor. */
+export function inPSR(x, z) {
+  for (const f of FEATURES) if (f.psr && Math.hypot(x - f.at[0], z - f.at[1]) < f.r * 0.95) return true;
+  return false;
 }
 
 export function slopeDeg(x, z) {
@@ -612,6 +632,101 @@ export function makeRover() {
 // ---------------------------------------------------------------------------------------------
 // Sky: gradient dome, stars, Earth, sun glare.
 // ---------------------------------------------------------------------------------------------
+// ---------------------------------------------------------------------------------------------
+// Dust. In vacuum a kicked grain follows a clean parabola and lands far away; there is no air to
+// slow it down or make a cloud. The particles use the real lunar gravity, so their arcs are long.
+// ---------------------------------------------------------------------------------------------
+function dustSystem(scene) {
+  const N = 260;
+  const pos = new Float32Array(N * 3);
+  const vel = new Float32Array(N * 3);
+  const life = new Float32Array(N);
+  for (let i = 0; i < N; i++) { pos[i * 3 + 1] = -50; life[i] = 0; }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  const mat = new THREE.PointsMaterial({ color: 0xcfc9bd, size: 0.085, transparent: true, opacity: 0.34, depthWrite: false, sizeAttenuation: true });
+  const points = new THREE.Points(geo, mat);
+  points.frustumCulled = false;
+  scene.add(points);
+  let cursor = 0;
+  return {
+    points,
+    /** Kick `n` grains from (x,z) with a sideways speed in m/s. */
+    kick(x, z, n = 6, speed = 2.2) {
+      for (let k = 0; k < n; k++) {
+        const i = cursor = (cursor + 1) % N;
+        const a = Math.random() * Math.PI * 2;
+        const v = speed * (0.35 + Math.random() * 0.9);
+        pos[i * 3] = x + Math.cos(a) * 0.35;
+        pos[i * 3 + 1] = heightAt(x, z) + 0.12;
+        pos[i * 3 + 2] = z + Math.sin(a) * 0.35;
+        vel[i * 3] = Math.cos(a) * v;
+        vel[i * 3 + 1] = 1.1 * (0.5 + Math.random());
+        vel[i * 3 + 2] = Math.sin(a) * v;
+        life[i] = 1;
+      }
+    },
+    update(dt) {
+      let dirty = false;
+      for (let i = 0; i < N; i++) {
+        if (life[i] <= 0) continue;
+        dirty = true;
+        vel[i * 3 + 1] -= MOON.gravity * dt;      // g = 1.62 m/s^2, no drag
+        pos[i * 3] += vel[i * 3] * dt;
+        pos[i * 3 + 1] += vel[i * 3 + 1] * dt;
+        pos[i * 3 + 2] += vel[i * 3 + 2] * dt;
+        const g = heightAt(pos[i * 3], pos[i * 3 + 2]);
+        if (pos[i * 3 + 1] <= g || pos[i * 3 + 1] < -40) { life[i] = 0; pos[i * 3 + 1] = -50; }
+      }
+      if (dirty) geo.attributes.position.needsUpdate = true;
+    },
+  };
+}
+
+// Ice in a cold trap is not a white sheet; it shows as glassy glints where the surface is broken.
+function iceGlints(scene) {
+  const f = FEATURES.find(x => x.id === 'cabeus');
+  if (!f) return null;
+  const N = 420;
+  const pos = new Float32Array(N * 3), size = new Float32Array(N);
+  for (let i = 0; i < N; i++) {
+    const a = Math.random() * Math.PI * 2, r = Math.sqrt(Math.random()) * f.r * 0.85;
+    const x = f.at[0] + Math.cos(a) * r, z = f.at[1] + Math.sin(a) * r;
+    pos[i * 3] = x; pos[i * 3 + 1] = heightAt(x, z) + 0.08; pos[i * 3 + 2] = z;
+    size[i] = 0.06 + Math.random() * 0.09;
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  const mat = new THREE.PointsMaterial({ color: 0xcfeaff, size: 0.1, transparent: true, opacity: 0.9, blending: THREE.AdditiveBlending, depthWrite: false });
+  const pts = new THREE.Points(geo, mat);
+  scene.add(pts);
+  return pts;
+}
+
+// A tiny equirect sky, prefiltered with PMREM so metal and glass reflect something believable
+// instead of a flat colour. The bright spot is the Sun; the cool glow is earthshine.
+export function makeEnvironment(renderer) {
+  const w = 256, h = 128;
+  const c = document.createElement('canvas'); c.width = w; c.height = h;
+  const x = c.getContext('2d');
+  const g = x.createLinearGradient(0, 0, 0, h);
+  g.addColorStop(0, '#05070d'); g.addColorStop(0.45, '#0b1424'); g.addColorStop(0.62, '#3a3a37'); g.addColorStop(1, '#6d6a62');
+  x.fillStyle = g; x.fillRect(0, 0, w, h);
+  const sun = x.createRadialGradient(w * 0.32, h * 0.36, 0, w * 0.32, h * 0.36, 34);
+  sun.addColorStop(0, '#fffdf4'); sun.addColorStop(0.25, 'rgba(255,232,190,0.85)'); sun.addColorStop(1, 'rgba(255,220,170,0)');
+  x.fillStyle = sun; x.fillRect(0, 0, w, h);
+  const earth = x.createRadialGradient(w * 0.78, h * 0.28, 0, w * 0.78, h * 0.28, 18);
+  earth.addColorStop(0, 'rgba(150,200,255,0.9)'); earth.addColorStop(1, 'rgba(120,170,255,0)');
+  x.fillStyle = earth; x.fillRect(0, 0, w, h);
+  const tex = new THREE.CanvasTexture(c);
+  tex.mapping = THREE.EquirectangularReflectionMapping;
+  tex.colorSpace = THREE.SRGBColorSpace;
+  const pmrem = new THREE.PMREMGenerator(renderer);
+  const rt = pmrem.fromEquirectangular(tex);
+  pmrem.dispose(); tex.dispose();
+  return rt.texture;
+}
+
 function sky(scene) {
   const geo = new THREE.SphereGeometry(400, 24, 16);
   const mat = new THREE.ShaderMaterial({
@@ -642,27 +757,57 @@ function sky(scene) {
   sg.setAttribute('size', new THREE.BufferAttribute(sizes, 1));
   const sm = new THREE.PointsMaterial({ color: 0xdfeaff, size: 1.9, sizeAttenuation: true, transparent: true, opacity: 0.9 });
   scene.add(new THREE.Points(sg, sm));
-  // Earth: fixed in the sky above the outpost. Blue oceans, white cloud swirls, green-brown land.
-  const c = document.createElement('canvas'); c.width = 512; c.height = 256;
+  // Earth: fixed in the sky above the outpost. High enough resolution that the continents and
+  // cloud bands read from the ground, with a thin atmosphere rim lit from the same direction as
+  // the Sun. Earth is tidally locked in this sky (as it is from the lunar near side).
+  const c = document.createElement('canvas'); c.width = 1024; c.height = 512;
   const x = c.getContext('2d');
-  x.fillStyle = '#1e5fa8'; x.fillRect(0, 0, 512, 256);
-  for (let i = 0; i < 260; i++) {
-    x.fillStyle = `rgba(${30 + rand() * 50|0},${90 + rand() * 60|0},${50 + rand() * 40|0},${0.25 + rand() * 0.5})`;
-    const cx = rand() * 512, cy = 40 + rand() * 176, r = 6 + rand() * 34;
-    x.beginPath(); x.ellipse(cx, cy, r, r * (0.4 + rand() * 0.8), rand() * 3, 0, 7); x.fill();
+  const og = x.createLinearGradient(0, 0, 0, 512);
+  og.addColorStop(0, '#123f78'); og.addColorStop(0.5, '#1a5fa8'); og.addColorStop(1, '#10356a');
+  x.fillStyle = og; x.fillRect(0, 0, 1024, 512);
+  // continents: soft clusters, then a warmer desert band
+  for (let i = 0; i < 90; i++) {
+    const cx = rand() * 1024, cy = 60 + rand() * 392, r = 18 + rand() * 70;
+    x.fillStyle = `rgba(${58 + rand() * 70 | 0},${92 + rand() * 60 | 0},${52 + rand() * 30 | 0},${0.55 + rand() * 0.4})`;
+    x.beginPath();
+    for (let k = 0; k < 7; k++) {
+      const a = (k / 7) * Math.PI * 2;
+      x.lineTo(cx + Math.cos(a) * r * (0.6 + rand() * 0.7), cy + Math.sin(a) * r * (0.5 + rand() * 0.6));
+    }
+    x.closePath(); x.fill();
   }
-  for (let i = 0; i < 220; i++) {
-    x.fillStyle = `rgba(255,255,255,${0.1 + rand() * 0.35})`;
-    const cx = rand() * 512, cy = rand() * 256, r = 8 + rand() * 40;
-    x.beginPath(); x.ellipse(cx, cy, r, r * 0.35, rand() * 3, 0, 7); x.fill();
+  for (let i = 0; i < 40; i++) {
+    x.fillStyle = `rgba(${196 + rand() * 40 | 0},${176 + rand() * 40 | 0},${132 + rand() * 30 | 0},0.5)`;
+    const cx = rand() * 1024, cy = 150 + rand() * 210;
+    x.beginPath(); x.ellipse(cx, cy, 12 + rand() * 44, 8 + rand() * 26, rand() * 3, 0, 7); x.fill();
+  }
+  // polar caps
+  x.fillStyle = 'rgba(240,248,255,0.92)'; x.fillRect(0, 0, 1024, 26);
+  x.fillStyle = 'rgba(232,244,255,0.8)'; x.fillRect(0, 490, 1024, 22);
+  // cloud bands
+  for (let i = 0; i < 300; i++) {
+    x.fillStyle = `rgba(255,255,255,${0.06 + rand() * 0.4})`;
+    const cx = rand() * 1024, cy = rand() * 512, r = 10 + rand() * 52;
+    x.beginPath(); x.ellipse(cx, cy, r, r * (0.22 + rand() * 0.3), rand() * 3, 0, 7); x.fill();
   }
   const tex = new THREE.CanvasTexture(c); tex.colorSpace = THREE.SRGBColorSpace;
-  const earth = new THREE.Mesh(new THREE.SphereGeometry(21, 32, 24), new THREE.MeshStandardMaterial({ map: tex, roughness: 0.85, metalness: 0, emissive: 0x14304f, emissiveMap: tex, emissiveIntensity: 0.55 }));
-  earth.position.set(-120, 190, -300);
-  earth.rotation.z = 0.4;
+  tex.anisotropy = 4;
+  const earth = new THREE.Mesh(new THREE.SphereGeometry(24, 64, 48), new THREE.MeshStandardMaterial({ map: tex, roughness: 0.82, metalness: 0, emissive: 0x16324f, emissiveMap: tex, emissiveIntensity: 0.5 }));
+  earth.position.set(-128, 196, -308);
+  earth.rotation.z = 0.41;
   scene.add(earth);
-  const halo = new THREE.Mesh(new THREE.SphereGeometry(22.6, 24, 18), new THREE.MeshBasicMaterial({ color: 0x6fb4ff, transparent: true, opacity: 0.13, side: THREE.BackSide }));
-  halo.position.copy(earth.position); scene.add(halo);
+  // atmosphere: a back-side shell with a fresnel term so the limb glows blue
+  const atmo = new THREE.Mesh(new THREE.SphereGeometry(25.4, 48, 32), new THREE.ShaderMaterial({
+    transparent: true, blending: THREE.AdditiveBlending, side: THREE.BackSide, depthWrite: false,
+    uniforms: { sunDir: { value: new THREE.Vector3(-0.6, 0.3, -0.74).normalize() } },
+    vertexShader: `varying vec3 vN; varying vec3 vP; void main(){ vN = normalize(normalMatrix * normal); vec4 mv = modelViewMatrix * vec4(position,1.0); vP = mv.xyz; gl_Position = projectionMatrix * mv; }`,
+    fragmentShader: `varying vec3 vN; varying vec3 vP; uniform vec3 sunDir;
+      void main(){ float rim = pow(1.0 - abs(dot(normalize(vN), normalize(-vP))), 2.4);
+        float lit = clamp(dot(normalize(vN), normalize(sunDir)) + 0.55, 0.0, 1.0);
+        gl_FragColor = vec4(vec3(0.32, 0.58, 1.0) * rim * lit * 1.5, rim * lit); }`,
+  }));
+  atmo.position.copy(earth.position);
+  scene.add(atmo);
   return earth;
 }
 
@@ -670,40 +815,129 @@ function sky(scene) {
 // Build everything
 // ---------------------------------------------------------------------------------------------
 function terrainMesh(scene) {
-  const SIZE = 280, N = 200;
+  // 520 m across: enough to hold Connecting Ridge, Cabeus and the rim of Shackleton.
+  const SIZE = 520, N = 300;
   const geo = new THREE.PlaneGeometry(SIZE, SIZE, N, N);
   geo.rotateX(-Math.PI / 2);
   const pos = geo.attributes.position;
   const colors = new Float32Array(pos.count * 3);
-  const base = new THREE.Color(0xa5a29b), dark = new THREE.Color(0x6d6a65), light = new THREE.Color(0xc8c4ba);
+  const base = new THREE.Color(0x97948d), dark = new THREE.Color(0x5b5853), light = new THREE.Color(0xbdb8ae);
+  const mare = new THREE.Color(0x6f6c68), cold = new THREE.Color(0x2f3644);
   for (let i = 0; i < pos.count; i++) {
     const x = pos.getX(i), z = pos.getZ(i);
     const h = heightAt(x, z);
     pos.setY(i, h);
     const c = base.clone();
     const n = 0.5 + 0.5 * Math.sin(x * 0.71 + z * 1.13) * Math.cos(z * 0.53 - x * 0.31);
-    c.lerp(light, n * 0.32).lerp(dark, clamp(-h * 0.3, 0, 0.6));
+    c.lerp(light, n * 0.22).lerp(dark, clamp(-h * 0.22, 0, 0.55));
+    // Fresh crater ejecta is brighter; the floor of a shadowed crater is both darker and bluer.
+    for (const f of FEATURES) {
+      const dd = Math.hypot(x - f.at[0], z - f.at[1]) / f.r;
+      if (dd > 0.85 && dd < 1.45) c.lerp(light, 0.22 * (1 - Math.abs(dd - 1.1) / 0.35));
+    }
+    if (inPSR(x, z)) c.lerp(cold, 0.72);
     if (Math.hypot(x, z) < 60) c.lerp(new THREE.Color(0xb2aea6), 0.22);
     colors[i * 3] = c.r; colors[i * 3 + 1] = c.g; colors[i * 3 + 2] = c.b;
   }
   geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
   geo.computeVertexNormals();
-  const mat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.97, metalness: 0.02, flatShading: false });
+  const mat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.98, metalness: 0.02 });
+  // Fine regolith detail: two octaves of world-space noise break up the flat facets close up, and
+  // the same noise tilts the normal so raking sunlight catches every little ripple.
+  mat.onBeforeCompile = (shader) => {
+    shader.vertexShader = shader.vertexShader
+      .replace('#include <common>', '#include <common>\nvarying vec3 vWPos;')
+      .replace('#include <begin_vertex>', '#include <begin_vertex>\nvWPos = (modelMatrix * vec4(transformed, 1.0)).xyz;');
+    shader.fragmentShader = shader.fragmentShader
+      .replace('#include <common>', `#include <common>
+        varying vec3 vWPos;
+        float h21(vec2 p){ p = fract(p * vec2(123.34, 456.21)); p += dot(p, p + 45.32); return fract(p.x * p.y); }
+        float vn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);
+          float a = h21(i), b = h21(i + vec2(1.0, 0.0)), c = h21(i + vec2(0.0, 1.0)), d = h21(i + vec2(1.0, 1.0));
+          return mix(mix(a, b, f.x), mix(c, d, f.x), f.y); }
+        float regolith(vec2 p){ return vn(p * 2.3) * 0.28 + vn(p * 7.9) * 0.42 + vn(p * 23.0) * 0.3; }`)
+      .replace('#include <color_fragment>', `#include <color_fragment>
+        float rough = regolith(vWPos.xz);
+        diffuseColor.rgb *= 0.93 + rough * 0.14;`)
+      .replace('#include <normal_fragment_begin>', `#include <normal_fragment_begin>
+        float bx = regolith(vWPos.xz + vec2(0.7, 0.0)) - regolith(vWPos.xz - vec2(0.7, 0.0));
+        float bz = regolith(vWPos.xz + vec2(0.0, 0.7)) - regolith(vWPos.xz - vec2(0.0, 0.7));
+        normal = normalize(normal + vec3(bx, 0.0, bz) * 0.85);`);
+  };
   const mesh = new THREE.Mesh(geo, mat);
   mesh.receiveShadow = true;
   scene.add(mesh);
   return mesh;
 }
 
+// A cheap far field: a ring of coarse terrain from 250 m to 900 m, so the detailed mesh never
+// ends in a straight line against the sky. It is a ring, not a disc, so it cannot poke through
+// the craters of the detailed mesh near the outpost.
+function farField(scene) {
+  // The detailed sheet ends at 260 m. This ring carries the ground out to 900 m so the horizon
+  // reads as a slope, not an edge, and it fades into the night with distance.
+  const INNER = 246, OUTER = 900;
+  const geo = new THREE.RingGeometry(INNER, OUTER, 220, 46);
+  geo.rotateX(-Math.PI / 2);
+  const pos = geo.attributes.position;
+  const colors = new Float32Array(pos.count * 3);
+  const base = new THREE.Color(0x96938c), light = new THREE.Color(0xb4afa5), haze = new THREE.Color(0x22262d);
+  for (let i = 0; i < pos.count; i++) {
+    const x = pos.getX(i), z = pos.getZ(i);
+    const d = Math.hypot(x, z);
+    let h = heightAt(x, z);
+    // broad swells: the real polar terrain is crater rims and basins, never a flat plate
+    const swell = Math.sin(x * 0.014 + z * 0.009) * 5.5 + Math.cos(z * 0.0065 - x * 0.011) * 8.5
+      + Math.sin((x + z) * 0.028) * 2.2;
+    h += swell * Math.min(1, Math.max(0, (d - INNER) / 90));
+    // meet the detailed mesh without a lip
+    h -= Math.max(0, INNER + 12 - d) * 0.25 + 0.3;
+    pos.setY(i, h);
+    const n = 0.5 + 0.5 * Math.sin(x * 0.71 + z * 1.13) * Math.cos(z * 0.53 - x * 0.31);
+    const c = base.clone().lerp(light, n * 0.24);
+    // distance haze: the far ground darkens toward the black sky
+    const t = Math.min(1, Math.max(0, (d - 380) / 520));
+    c.lerp(haze, t * 0.6);
+    colors[i * 3] = c.r; colors[i * 3 + 1] = c.g; colors[i * 3 + 2] = c.b;
+  }
+  geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+  geo.computeVertexNormals();
+  const mat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 1, metalness: 0, flatShading: true });
+  const mesh = new THREE.Mesh(geo, mat);
+  scene.add(mesh);
+  return mesh;
+}
+
+function distantRims(scene) {
+  // Named features sit on the horizon at their true bearings: Shackleton's rim to the south,
+  // Malapert's massif to the south-east. Flat-shaded pyramids keep the silhouette cheap.
+  const ridges = [
+    { at: [-0.925, 0.379], w: 620, h: 118, d: 300 },   // Shackleton rim (south)
+    { at: [0.79, 0.615], w: 520, h: 92, d: 260 },      // Malapert massif (south-east)
+    { at: [0.12, -0.99], w: 700, h: 64, d: 280 },      // far ring wall to the north
+    { at: [-0.62, -0.78], w: 480, h: 48, d: 240 }
+  ];
+  const mat = new THREE.MeshStandardMaterial({ color: 0x8b8780, roughness: 1, metalness: 0, flatShading: true });
+  for (const r of ridges) {
+    const geo = new THREE.ConeGeometry(r.w * 0.5, r.h, 7, 1, false, 0.3);
+    const m = new THREE.Mesh(geo, mat);
+    const R = 760 + Math.random() * 60;
+    m.position.set(r.at[0] * R, -r.h * 0.34, r.at[1] * R);
+    m.scale.set(1, 1, r.d / r.w);
+    m.rotation.y = Math.random() * Math.PI;
+    scene.add(m);
+  }
+}
+
 function rubble(scene) {
-  const count = 900;
+  const count = 1800;
   const geo = new THREE.DodecahedronGeometry(1, 0);
   const mat = new THREE.MeshStandardMaterial({ color: 0x9d9a93, roughness: 0.95, flatShading: true });
   const inst = new THREE.InstancedMesh(geo, mat, count);
   const m = new THREE.Matrix4(), q = new THREE.Quaternion(), e = new THREE.Euler(), s = new THREE.Vector3(), p = new THREE.Vector3();
   let placed = 0, guard = 0;
   while (placed < count && guard++ < 6000) {
-    const a = rand() * Math.PI * 2, r = 12 + Math.pow(rand(), 0.6) * 105;
+    const a = rand() * Math.PI * 2, r = 24 + Math.pow(rand(), 0.55) * 156;
     const x = Math.cos(a) * r, z = Math.sin(a) * r;
     if (x > -16.5 && x < 12.5 && z > -23 && z < -9) continue;
     if (STATIONS.some(st => Math.hypot(x - st.x, z - st.z) < (st.radius || 4) + 4.6)) continue;
@@ -811,7 +1045,9 @@ function props(scene) {
 
 export function buildWorld(scene) {
   scene.fog = new THREE.FogExp2(0x0d1930, 0.0026);
-  sky(scene);
+  const earth = sky(scene);
+  const dust = dustSystem(scene);
+  const glints = iceGlints(scene);
   // Lights: a low warm sun for long shadows, cool sky bounce, and a soft fill from the camera side.
   const sun = new THREE.DirectionalLight(0xfff4e4, 3.4);
   sun.position.set(-92, 46, 74);
@@ -823,14 +1059,25 @@ export function buildWorld(scene) {
   sun.shadow.bias = -0.0008; sun.shadow.normalBias = 0.05;
   sun.target.position.set(0, 0, 0);
   scene.add(sun, sun.target);
-  scene.add(new THREE.HemisphereLight(0xb9cfee, 0x6b665c, 1.35));
-  scene.add(new THREE.AmbientLight(0x35435c, 0.62));
+  scene.add(new THREE.HemisphereLight(0xb9cfee, 0x6b665c, 0.95));
+  scene.add(new THREE.AmbientLight(0x35435c, 0.5));
   const fill = new THREE.DirectionalLight(0xb4ccff, 0.55); fill.position.set(60, 30, -80); scene.add(fill, fill.target);
-  // sun glare
-  const flare = new THREE.Sprite(new THREE.SpriteMaterial({ color: 0xffe6bd, transparent: true, opacity: 0.55, depthWrite: false, blending: THREE.AdditiveBlending }));
-  flare.scale.setScalar(26); flare.position.copy(sun.position).normalize().multiplyScalar(330); scene.add(flare);
+  // Sun glare: a small hard disc, a wide soft halo and a faint horizontal flare.
+  const sunDir = sun.position.clone().normalize();
+  const glare = new THREE.Group();
+  const core = new THREE.Sprite(new THREE.SpriteMaterial({ color: 0xffffff, transparent: true, opacity: 0.95, depthWrite: false, blending: THREE.AdditiveBlending }));
+  core.scale.setScalar(9);
+  const halo = new THREE.Sprite(new THREE.SpriteMaterial({ color: 0xffe3b4, transparent: true, opacity: 0.42, depthWrite: false, blending: THREE.AdditiveBlending }));
+  halo.scale.setScalar(46);
+  const streak = new THREE.Sprite(new THREE.SpriteMaterial({ color: 0xffd9a8, transparent: true, opacity: 0.16, depthWrite: false, blending: THREE.AdditiveBlending }));
+  streak.scale.set(190, 7, 1);
+  glare.add(halo, streak, core);
+  glare.position.copy(sunDir).multiplyScalar(420);
+  scene.add(glare);
 
   const terrain = terrainMesh(scene);
+  farField(scene);
+  distantRims(scene);
   rubble(scene);
   paths(scene);
   doorMarkers(scene);
@@ -918,6 +1165,10 @@ export function buildWorld(scene) {
       L.knee.rotation.x = Math.max(0, Math.cos(t * 3.2 + L.phase)) * 0.7;
     }
     rafiq.userData.head.rotation.y = Math.sin(t * 0.7) * 0.4;
+    // Earth turns once a lunar day (it is tidally locked, so this is a slow drift in view)
+    earth.rotation.y += dt * 0.004;
+    dust.update(dt);
+    if (glints) glints.material.opacity = 0.55 + Math.sin(t * 1.7) * 0.35;
     // drone circles the outpost
     drone.position.set(Math.cos(t * 0.16) * 22, 9 + Math.sin(t * 0.5) * 0.8, Math.sin(t * 0.16) * 22);
     drone.rotation.y = -t * 0.16;
@@ -926,13 +1177,32 @@ export function buildWorld(scene) {
     for (const s of sites) s.children.forEach(c => { if (c.userData.flag) c.material.color.setHex(Math.sin(t * 2.2) > -0.4 ? 0x86e6c0 : 0x2f6b58); });
   }
 
+  // At 89.7 S the Sun never sets on the ridge in summer: it circles the sky about 6 degrees above
+  // the horizon, so shadows swing around through the day while the sky stays black.
+  function setSunTime(minutes, px = 0, pz = 0) {
+    const az = ((minutes % 1440) / 1440) * Math.PI * 2 + 0.9;
+    const el = 0.105 + 0.018 * Math.sin(az * 2);
+    const dir = new THREE.Vector3(Math.cos(az) * Math.cos(el), Math.sin(el), Math.sin(az) * Math.cos(el));
+    sun.position.set(px + dir.x * 170, dir.y * 170, pz + dir.z * 170);
+    sun.target.position.set(px, 0, pz);
+    sun.target.updateMatrixWorld();
+    glare.position.copy(dir).multiplyScalar(420);
+  }
+  setSunTime(7 * 60 + 30, 0, 0);
+
   return {
-    scene, terrain, buildings, rover, rafiq, drone, sites, sun, fill,
+    scene, terrain, buildings, rover, rafiq, drone, sites, sun, fill, dust, earth, glints, glare,
+    setSunTime,
     update,
     stationPoint: id => {
       const st = STATIONS.find(s => s.id === id);
       return new THREE.Vector3(st.door[0], heightAt(st.door[0], st.door[1]), st.door[1]);
     },
+    // Real, named places the player can see from the ridge (labels drawn by the DOM overlay).
+    featurePoints: FEATURES.map(f => ({
+      id: f.id, name: f.name,
+      point: new THREE.Vector3(f.at[0], heightAt(f.at[0], f.at[1]) + (f.rim || 2) + 3, f.at[1]),
+    })),
     labelPoint: id => {
       const st = STATIONS.find(s => s.id === id);
       const h = st.kind === 'habitat' ? 6.2 : st.kind === 'greenhouse' ? 7.4 : st.kind === 'mast' ? 11.5 : st.kind === 'power' ? 5.4 : 5.2;
