@@ -2,7 +2,9 @@
 // Run with: npm test
 import en from '../src/lang/en.js';
 import { SCEN, HINTS } from '../src/scenarios.js';
-import { INCIDENTS, STATIONS, CREW, CARDS, GUIDE, JOBS, PLACES, GLOSSARY, TALK, SAMPLE_SITES } from '../src/data.js';
+import { INCIDENTS, STATIONS, CREW, CARDS, GUIDE, PLACES, GLOSSARY, TALK, SAMPLE_SITES } from '../src/data.js';
+import { FEATURES, MOON } from '../src/lunar.js';
+import { G, HOP_APEX_M, ROVER_PHYS, ROVER_PHYS as RP, roverRangeMetres } from '../src/physics.js';
 
 let ar = null;
 try { ar = (await import('../src/lang/ar.js')).default; } catch (e) { /* reported below */ }
@@ -48,11 +50,15 @@ const need = [
   ...Object.values(CARDS).flat().map(c => [`card.${c}.t`, `card.${c}.d`]).flat(),
   ...SAMPLE_SITES.map(s => [`sampleSite.${s.id}`, `sampleSiteText.${s.id}`]).flat(),
   ...GUIDE.map(g => [`guide.${g}.t`]).flat(),
-  ...JOBS.map(j => [`guide.jobs.rows.${j}.t`, `guide.jobs.rows.${j}.d`]).flat(),
   ...PLACES.map(p => [`place.${p}.t`, `place.${p}.d`]).flat(),
+  ...FEATURES.map(f => `place.feature.${f.id}`),
+  ...CREW.map(c => `crew.${c.id}.greet`),
+  ...CREW.flatMap(c => [0, 1, 2].map(i => `bark.${c.id}.${i}`)),
   ...GLOSSARY.map(g => [`glossary.${g}.t`, `glossary.${g}.d`]).flat(),
   ...Object.entries(TALK).flatMap(([bot, topics]) => topics.map(tp => `talk.${bot}.${tp}`)),
   'ui.enter', 'ui.intro', 'ui.foot', 'ui.board', 'ui.guide', 'ui.journal', 'ui.help',
+  'ui.voices', 'ui.voicesOff', 'ui.sayAgain', 'ui.topics.help',
+  'guide.moon.note', 'guide.moon.southPole', 'guide.moon.alt',
   'obj.reports.t', 'obj.reports.d', 'obj.explore.t', 'obj.explore.d', 'obj.samples.t',
 ];
 for (const key of need) if (typeof get(en, key) !== 'string') fail(`English is missing: ${key}`);
@@ -64,7 +70,7 @@ function arr(v, len, label) {
 }
 for (const inc of INCIDENTS) {
   const id = inc.id;
-  for (const f of ['title', 'report', 'bot', 'goal', 'why', 'skill', 'earth', 'answer', 'deep', 'done']) {
+  for (const f of ['title', 'report', 'npc', 'goal', 'why', 'skill', 'earth', 'answer', 'deep', 'done', 'src']) {
     if (typeof get(en, `inc.${id}.${f}`) !== 'string') fail(`inc.${id}.${f} is missing`);
   }
   const spec = SCEN[id];
@@ -85,6 +91,12 @@ for (const inc of INCIDENTS) {
     const optional = spec.loads.filter(l => !l.crit).reduce((a, l) => a + l.kw, 0);
     if (optional < mustShed) fail(`${id} cannot reach its budget by shedding optional loads`);
     if (spec.odd >= spec.panelKw.length) fail(`${id}: odd index out of range`);
+    const healthy = spec.panelKw.filter((_, i) => i !== spec.odd);
+    const odd = spec.panelKw[spec.odd];
+    if (!(odd < Math.min(...healthy) * 0.5)) fail(`${id}: the odd array is not clearly weak`);
+    if (Math.max(...healthy) - Math.min(...healthy) > 0.2) warn.push(`${id}: healthy arrays differ by more than 0.2 kW`);
+    const critKw = spec.loads.filter(l => l.crit).reduce((a, l) => a + l.kw, 0);
+    if (critKw > spec.target) fail(`${id}: critical loads (${critKw} kW) exceed the available ${spec.target} kW`);
   } else if (spec.kind === 'mcq') {
     arr(enInc.q, n, `inc.${id}.q`);
     arr(enInc.fb, n, `inc.${id}.fb`);
@@ -102,6 +114,8 @@ for (const inc of INCIDENTS) {
     const needs = spec.items.filter(i => i.need).reduce((a, i) => a + i.cost, 0);
     if (needs > spec.budget) fail(`${id}: the needs cost more than the budget`);
     if (needs === spec.budget) warn.push(`${id}: needs use the whole budget, no room for a choice`);
+    const wants = spec.items.filter(i => !i.need).reduce((a, i) => a + i.cost, 0);
+    if (needs + wants <= spec.budget) warn.push(`${id}: every item fits, so there is no decision to make`);
   } else if (spec.kind === 'match') {
     arr(enInc.samples, spec.pairs.length, `inc.${id}.samples`);
     arr(enInc.cards, spec.pairs.length, `inc.${id}.cards`);
@@ -116,11 +130,30 @@ for (const inc of INCIDENTS) {
     const startSum = spec.blocks.reduce((a, b) => a + b.start, 0);
     if (startSum !== spec.total) fail(`${id}: starting values total ${startSum}, not ${spec.total}`);
     for (const b of spec.blocks) if (b.start < b.min) warn.push(`${id}: a block starts under its own minimum, which is fine as a puzzle`);
+    // A solution must exist in whole hours: distribute 24 between the min/max of each block.
+    const minSum = spec.blocks.reduce((a, b) => a + b.min, 0);
+    const maxSum = spec.blocks.reduce((a, b) => a + b.max, 0);
+    if (minSum > spec.total) fail(`${id}: the minimum blocks already exceed ${spec.total} hours`);
+    if (maxSum < spec.total) fail(`${id}: the maximum blocks cannot reach ${spec.total} hours`);
   }
   const hints = HINTS[id];
   if (!Array.isArray(hints) || hints.length !== 2) fail(`HINTS.${id} needs two hints`);
   else for (const h of hints) if (typeof get(en, h) !== 'string') fail(`Hint missing: ${h}`);
 }
+
+// ---------------------------------------------------------------- real physics
+const near = (a, b, tol, label) => { if (Math.abs(a - b) > tol) fail(`${label}: ${a} is not close to ${b}`); };
+near(G, 1.62, 0.001, 'lunar gravity (m/s^2)');
+near(MOON.solarConstant, 1361, 1, 'solar constant (W/m^2)');
+near(MOON.lightDelay, 1.28, 0.01, 'light delay (s)');
+near(MOON.recoveryWater, 0.98, 0.001, 'ISS water recovery');
+near(MOON.lrvMassKg, 210, 0.1, 'LRV mass (kg)');
+near(MOON.lrvTopSpeedMs, 5.0, 0.01, 'LRV top speed (m/s = 18 km/h)');
+if (Math.abs(HOP_APEX_M - (Math.sqrt(2 * G * HOP_APEX_M) ** 2) / (2 * G)) > 1e-9) fail('hop physics is inconsistent');
+const range = roverRangeMetres(1) / 1000;
+if (range < 30 || range > 45) fail(`rover range from the battery model is ${range.toFixed(1)} km, expected about 36 km`);
+if (RP.batteryKwh < 8 || RP.batteryKwh > 9.5) fail('rover battery does not match two 36 V 121 Ah packs');
+if (!FEATURES.length || !FEATURES.every(f => typeof f.fact === 'string' && f.src)) fail('every real feature needs a fact and a source');
 
 // ---------------------------------------------------------------- misc
 if (!en.guide.loop.steps || en.guide.loop.steps.length !== 5) fail('guide.loop.steps must have 5 steps');

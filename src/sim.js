@@ -56,7 +56,7 @@ export class Sim {
     this.player.teleport(0, 2, Math.PI);
     this.rover.pos.set(...this.roverParkY());
     this.rover.reserve = 0.74;
-    if (this.crew) this.crew.bots.forEach(b => { b.path = []; b.state = 'idle'; });
+    if (this.crew) this.crew.npcs.forEach(b => { b.path = []; b.state = 'idle'; });
     this.dirty = true;
   }
 
@@ -170,7 +170,7 @@ export class Sim {
     this.incidents[id] = { id, state: 'new', created: this.minutes + this.day * 1440, resolvedDay: null };
     this.nudge(INCIDENT_DIP[id] || {});
     const door = `${inc.station}Door`;
-    this.crew.sendTo(inc.bot, door, inc.kind === 'order' ? 'repairing' : 'investigating');
+    this.crew.sendTo(inc.npc, door, inc.kind === 'order' ? 'repairing' : 'investigating');
     this.ui.toast(this.ui.t('ui.toastIncident', { t: this.ui.t(`inc.${id}.title`) }), 'incident');
     this.ui.badge();
     this.save();
@@ -183,7 +183,7 @@ export class Sim {
     const st = this.incidents[id];
     if (st.state === 'resolved' || st.state === 'crew') return false;
     st.state = 'selected';
-    this.crew.sendTo(inc.bot, `${inc.station}Door`, inc.kind === 'order' ? 'repairing' : 'investigating');
+    this.crew.sendTo(inc.npc, `${inc.station}Door`, inc.kind === 'order' ? 'repairing' : 'investigating');
     this.ui.badge();
     this.save();
     return true;
@@ -211,7 +211,7 @@ export class Sim {
       this.helpCount++;
       this.bump('mood', 2);
     }
-    if (inc) this.crew.sendTo(inc.bot, `${STATIONS.find(s => s.id === inc.bot.home)?.id || inc.station}Door`, 'returning');
+    if (inc) this.crew.sendTo(inc.npc, `${STATIONS.find(s => s.id === inc.npc.home)?.id || inc.station}Door`, 'returning');
     this.ui.badge();
     this.save();
     return true;

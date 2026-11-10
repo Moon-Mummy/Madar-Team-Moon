@@ -34,7 +34,7 @@ class Activity {
     this.sim = sim; this.ui = ui; this.inc = inc;
     this.id = inc.id;
     this.spec = SCEN[inc.id] || { kind: 'mcq', steps: 1, correct: [0] };
-    this.crew = CREW.find(c => c.id === inc.bot) || CREW[0];
+    this.crew = CREW.find(c => c.id === inc.npc) || CREW[0];
     this.phase = 'work';
     this.hintLevel = 0;
     this.errors = 0;
@@ -57,7 +57,7 @@ class Activity {
     const p = E('p', null, `${crewName} · ${this.tt(`crew.${this.crew.id}.role`)}`);
     ht.append(h3, p);
     const sp = E('div', 'sp');
-    const close = btn('ib', '✕', () => this.leave());
+    const close = btn('ib', '×', () => this.leave());
     close.setAttribute('aria-label', this.tt('ui.close'));
     sp.append(close);
     head.append(av, ht, sp);
@@ -67,6 +67,9 @@ class Activity {
     this.root.append(head, this.bodyEl, this.footEl);
     this.ui.openSheet(this.root, true, () => this.leave());
     this.render();
+    // A little artwork at the top of the sheet, when there is a picture for this task.
+    // The situation opens with the crew member speaking, not with a wall of text.
+    this.ui.sayLine?.(this.crew.id, this.tt(`inc.${this.id}.npc`));
     return this;
   }
 
@@ -80,14 +83,15 @@ class Activity {
 
   report() {
     const box = E('div');
-    box.append(E('p', null, this.tt(`inc.${this.id}.report`)));
-    const say = E('div', 'say');
-    const dot = E('div', 'dot', this.tt(`crew.${this.crew.id}.name`).slice(0, 1));
-    dot.style.background = this.crew.color;
-    const txt = E('div');
-    txt.append(E('p', null, this.tt(`inc.${this.id}.bot`)));
-    say.append(dot, txt);
-    box.append(say);
+    const spoken = this.tt(`inc.${this.id}.npc`);
+    const line = E('div', 'line');
+    const p = E('p', null, spoken);
+    line.append(p, this.ui.sayAgain?.(spoken, this.crew.id) || E('span'));
+    box.append(line);
+    // One short subtitle of context, then the measured source of the numbers in the task.
+    box.append(E('p', 'subtle', this.tt(`inc.${this.id}.report`)));
+    const src = this.tt(`inc.${this.id}.src`);
+    if (src) box.append(E('div', 'src', `◦ ${src}`));
     return box;
   }
 
@@ -150,6 +154,11 @@ class Activity {
   render() {
     if (this.phase === 'reflect') return this.renderReflect();
     this.bodyEl.append(this.report(), this.goalLine());
+    const artKey = { solar: 'hero.jpg', rover: 'rover.jpg', sample: 'ice.jpg', green: 'greenhouse.jpg', water: 'greenhouse.jpg' }[this.id];
+    if (artKey && this.ui.art) {
+      const fig = this.ui.art(artKey, this.tt(`inc.${this.id}.title`), 'art-banner');
+      if (fig) this.bodyEl.prepend(fig);
+    }
     const kind = this.spec.kind;
     if (kind === 'order') this.renderOrder();
     else if (kind === 'oddone') this.renderOddOne();
@@ -236,6 +245,7 @@ class Activity {
     if (this.state.phase === 1) {
       this.bodyEl.append(E('h4', null, this.tt('inc.solar.panelNote')));
       const wrap = E('div', 'grid2');
+      const maxKw = Math.max(...s.panelKw);
       s.panelKw.forEach((kw, i) => {
         const b = btn('opt', '');
         const sw = E('div', 'sw2');
@@ -245,8 +255,8 @@ class Activity {
         b.append(sw);
         const bar = E('div', 'cap');
         const fill = E('i');
-        fill.style.width = `${Math.min(100, (kw / 22) * 100)}%`;
-        if (kw < 15) fill.style.background = 'var(--gold)';
+        fill.style.width = `${Math.min(100, (kw / maxKw) * 100)}%`;
+        if (kw < maxKw * 0.6) fill.style.background = 'var(--gold)';
         bar.append(fill);
         b.append(bar);
         b.addEventListener('click', () => {
@@ -267,14 +277,14 @@ class Activity {
     // Phase 2: load shedding
     this.bodyEl.append(this.successes(this.tt('inc.solar.pickedOdd')));
     this.bodyEl.append(E('h4', null, this.tt('inc.solar.loadsTitle')));
-    const total = s.loads.reduce((sum, l, i) => sum + (l.crit || !this.state.off.has(i) ? l.kw : 0), 0);
-    this.bodyEl.append(E('p', null, this.tt('inc.solar.loadsNote', { kw: s.panelKw.reduce((a, b) => a + b, 0), target: s.target })));
+    const total = Math.round(s.loads.reduce((sum, l, i) => sum + (l.crit || !this.state.off.has(i) ? l.kw : 0), 0) * 10) / 10;
+    this.bodyEl.append(E('p', null, this.tt('inc.solar.loadsNote', { kw: s.target, target: s.target })));
     const gauge = E('div', 'cap' + (total > s.target ? ' over' : ''));
     const fill = E('i');
-    fill.style.width = `${Math.min(100, (total / 100) * 100)}%`;
+    fill.style.width = `${Math.min(100, Math.max(0, (total / s.target) * 100))}%`;
     gauge.append(fill);
     this.bodyEl.append(gauge);
-    this.bodyEl.append(E('p', null, `${total} kW / ${s.target} kW`));
+    this.bodyEl.append(E('p', null, `${total.toFixed(1)} kW / ${s.target.toFixed(1)} kW`));
     const list = E('div');
     s.loads.forEach((l, i) => {
       const on = l.crit || !this.state.off.has(i);
@@ -300,7 +310,7 @@ class Activity {
       this.renderFoot(c);
     } else {
       this.renderFoot();
-      if (total > s.target) this.bodyEl.append(this.misses(this.tt('inc.solar.loadsOver', { over: total - s.target })));
+      if (total > s.target) this.bodyEl.append(this.misses(this.tt('inc.solar.loadsOver', { over: (total - s.target).toFixed(1) })));
       if (critOff) this.bodyEl.append(this.misses(this.tt('inc.solar.loadsMissing')));
     }
   }

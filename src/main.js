@@ -1,12 +1,14 @@
 // Madar-Team-Moon — entry point: renderer, camera, controls, interactions and the loop.
 import * as THREE from '../vendor/three.module.min.js';
-import { buildWorld, heightAt } from './world.js';
+import { buildWorld, heightAt, makeEnvironment } from './world.js';
 import { Sim } from './sim.js';
 import { UI } from './ui.js';
 import { setSuit, insideBlock } from './entities.js';
 import { STATIONS, CREW, SAMPLE_SITES, SUITS, stationById } from './data.js';
 import { t, setLang } from './i18n.js';
 import { sfx, resumeAudio } from './audio.js';
+import { HUD_PHYSICS, HOP_APEX_M, G } from './physics.js';
+import { say, setSpeechEnabled, onSpeech, stopSpeaking, speechAvailable } from './speech.js';
 
 const canvas = document.getElementById('game');
 const loading = document.getElementById('loading');
@@ -32,7 +34,7 @@ renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
-renderer.toneMappingExposure = 1.12;
+renderer.toneMappingExposure = 1.02;
 
 const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(52, window.innerWidth / window.innerHeight, 0.1, 900);
@@ -40,6 +42,19 @@ camera.position.set(0, 9, 24);
 camera.lookAt(0, 2, -8);
 
 const world = buildWorld(scene);
+
+// Prefiltered sky reflections: metals and glass now pick up the sun and earthshine instead of a
+// flat colour. Everything stays procedural — no texture files, no network requests.
+scene.environment = makeEnvironment(renderer);
+function applyEnvironment(root) {
+  root.traverse(o => {
+    const mats = Array.isArray(o.material) ? o.material : (o.material ? [o.material] : []);
+    for (const m of mats) if ('envMapIntensity' in m) m.envMapIntensity = 0.5;
+  });
+}
+applyEnvironment(scene);
+document.getElementById('phys').textContent = HUD_PHYSICS;
+document.getElementById('physIntro').textContent = HUD_PHYSICS;
 
 // ---------------------------------------------------------------------------------------------
 // Controls: orbit camera, keyboard input, touch.
@@ -92,6 +107,11 @@ class Controls {
 
 const controls = new Controls();
 const ui = new UI();
+ui.speaker = say;
+onSpeech(({ speaking, who }) => {
+  const npc = sim && sim.crew && sim.crew.byId[who];
+  if (npc) npc.speaking = speaking;
+});
 ui.controls = controls;
 controls.input = ui._rawInput;
 controls.hop = () => { controls.input.jump = true; setTimeout(() => { controls.input.jump = false; }, 140); };
@@ -129,6 +149,12 @@ function beginSession(fresh, color) {
   sim.player.suitColor = sim.suitColor;
   setSuit(sim.player);
   sim.settings.sound = sim.settings.sound !== false;
+  if (sim.settings.voices === undefined) sim.settings.voices = true;
+  setSpeechEnabled(sim.settings.voices !== false);
+  applyEnvironment(scene);
+  if (speechAvailable() && sim.settings.voices !== false) {
+    setTimeout(() => say('maya', t('bark.maya.0'), { lang: sim.settings.lang || INITIAL_LANG }), 1400);
+  }
   sim.started = true;
   started = true;
   controls.yaw = 0.15; controls.pitch = 0.32; controls.dist = 12.5; controls.targetDist = 12.5;
@@ -137,7 +163,8 @@ function beginSession(fresh, color) {
   sim.save();
   if (!sim.introSeen) {
     sim.introSeen = true;
-    setTimeout(() => ui.toast(t('onboarding.move'), 'quiet'), 900);
+    const coarse = window.matchMedia && window.matchMedia('(pointer: coarse)').matches;
+    setTimeout(() => ui.toast(t(coarse ? 'onboarding.touch' : 'onboarding.move'), 'quiet'), 900);
     setTimeout(() => ui.toast(t('onboarding.interact'), 'quiet'), 6200);
     setTimeout(() => ui.toast(t('onboarding.board'), 'quiet'), 12000);
   }
@@ -148,9 +175,9 @@ function beginSession(fresh, color) {
 // ---------------------------------------------------------------------------------------------
 let focus = null;
 
-function nearestBot() {
+function nearestNPC() {
   let best = null, bd = 3.4;
-  for (const b of sim.crew.bots) {
+  for (const b of sim.crew.npcs) {
     const d = Math.hypot(b.pos.x - sim.player.pos.x, b.pos.z - sim.player.pos.z);
     if (d < bd) { bd = d; best = b; }
   }
@@ -181,7 +208,7 @@ function updateFocus() {
     const d = Math.hypot(st.door[0] - p.x, st.door[1] - p.z);
     if (d < 4.6 && d < bd) { bd = d; best = { type: 'station', id: st.id }; }
   }
-  const bot = nearestBot();
+  const bot = nearestNPC();
   if (bot) {
     const d = Math.hypot(bot.pos.x - p.x, bot.pos.z - p.z);
     if (d < bd) { bd = d; best = { type: 'bot', id: bot.id }; }
@@ -196,6 +223,8 @@ function updateFocus() {
 }
 
 function act() {
+  // any deliberate action interrupts a line that is still playing
+
   if (!started || ui.modalOpen) return;
   if (sim.driving) {
     const site = sim.rover.nearestSite();
@@ -309,6 +338,46 @@ function updateCamera(dt) {
 }
 
 // ---------------------------------------------------------------------------------------------
+// Dust and voices
+// ---------------------------------------------------------------------------------------------
+let dustTimer = 0, wasAirborne = false;
+function updateDust(dt) {
+  dustTimer -= dt;
+  const p = sim.driving ? sim.rover.pos : sim.player.pos;
+  if (sim.driving) {
+    if (Math.abs(sim.rover.speed) > 2 && dustTimer <= 0) {
+      world.dust.kick(p.x - Math.sin(sim.rover.heading) * 2.2, p.z - Math.cos(sim.rover.heading) * 2.2, 4, 1.5);
+      dustTimer = 0.16;
+    }
+    return;
+  }
+  const running = sim.player.speed > 4.2 && sim.player.onGround;
+  if (running && dustTimer <= 0) { world.dust.kick(p.x, p.z, 2, 0.9); dustTimer = 0.22; }
+  if (wasAirborne && sim.player.onGround && sim.player.vy <= 0) world.dust.kick(p.x, p.z, 7, 1.4);
+  wasAirborne = !sim.player.onGround;
+}
+
+// NPCs speak for themselves: walk near one and they say a short line, out loud, once in a while.
+function updateBarks(now) {
+  if (ui.modalOpen || !speechAvailable()) return;
+  if (sim.settings.voices === false) return;
+  const lang = sim.settings.lang || INITIAL_LANG;
+  for (const npc of sim.crew.npcs) {
+    const d = Math.hypot(npc.pos.x - sim.player.pos.x, npc.pos.z - sim.player.pos.z);
+    if (d > 6.5) continue;
+    if (now < (npc.barkAt || 0)) continue;
+    const i = Math.floor(Math.random() * 3);
+    const line = t(`bark.${npc.id}.${i}`);
+    if (!line) continue;
+    npc.barkAt = now + 46 + Math.random() * 30;
+    npc.speaking = true;
+    ui.npcSay(npc, line);
+    say(npc.id, line, { lang });
+    break;
+  }
+}
+
+// ---------------------------------------------------------------------------------------------
 // Loop
 // ---------------------------------------------------------------------------------------------
 const clock = new THREE.Clock();
@@ -330,6 +399,8 @@ function loop() {
     world.fill.target.position.set(p.x, 1, p.z);
     world.fill.target.updateMatrixWorld();
     if (sim.rover.stuckWarn) { sim.rover.stuckWarn = false; ui.toast(t('ui.roverStuck')); }
+    updateDust(dt);
+    updateBarks(tNow);
     // rover recharges slowly at the garage
     if (!sim.driving) {
       const dg = Math.hypot(sim.rover.pos.x - 8, sim.rover.pos.z - 16);
@@ -373,11 +444,11 @@ window.MADAR = {
   openBoard: () => ui.openBoard(),
   openStation: id => ui.openStation(id),
   openJournal: () => ui.openJournal(),
-  openGuide: () => ui.openGuide(),
+  openGuide: (chapter = 'moon') => ui.openGuide(chapter),
   get camera() { return camera; },
   get controls() { return controls; },
   get ui() { return ui; },
-  version: '1.0.0',
+  version: '2.0.0',
 };
 
 loop();

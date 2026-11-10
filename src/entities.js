@@ -3,6 +3,7 @@
 import * as THREE from '../vendor/three.module.min.js';
 import { STATIONS, CREW, SAMPLE_SITES, ROVER, NAV_NODES, NAV_EDGES, PLAYER } from './data.js';
 import { heightAt, slopeDeg } from './world.js';
+import { ROVER_PHYS, traction, SLOPE_SLIP_DEG } from './physics.js';
 
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 const lerpAngle = (a, b, t) => {
@@ -216,40 +217,34 @@ export class Player {
 }
 
 // ---------------------------------------------------------------------------------------------
-// Crew bots: hovering, friendly, and they walk the nav graph rather than drifting in circles.
+// Crew NPCs: people in suits, not robots. Each one is the same astronaut rig as the player, with a
+// personal suit colour, a shoulder flash and a tinted visor, so you can tell who is who from far
+// away. They walk with a real gait and turn to face you when you get close.
 // ---------------------------------------------------------------------------------------------
-function botBody(hex) {
-  const g = new THREE.Group();
-  const shell = new THREE.MeshStandardMaterial({ color: 0xe8eef2, roughness: 0.5, metalness: 0.25, flatShading: true });
-  const accent = new THREE.MeshStandardMaterial({ color: hex, roughness: 0.45, metalness: 0.2, flatShading: true });
-  const dark = new THREE.MeshStandardMaterial({ color: 0x2b3540, roughness: 0.7, flatShading: true });
-  const glowM = new THREE.MeshBasicMaterial({ color: hex });
-  const body = new THREE.Mesh(new THREE.CapsuleGeometry(0.34, 0.36, 6, 12), shell);
-  body.position.y = 1.15; body.castShadow = true; g.add(body);
-  const visor = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.19, 0.1), new THREE.MeshStandardMaterial({ color: 0x0d2233, roughness: 0.1, metalness: 0.8, emissive: hex, emissiveIntensity: 0.28 }));
-  visor.position.set(0, 1.25, 0.3); g.add(visor);
-  const eyes = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.06, 0.04), glowM);
-  eyes.position.set(0, 1.27, 0.36); g.add(eyes);
-  // shoulder ring
-  const ring = new THREE.Mesh(new THREE.TorusGeometry(0.33, 0.05, 6, 16), accent);
-  ring.position.y = 0.98; ring.rotation.x = Math.PI / 2; g.add(ring);
-  // arms
-  const armL = new THREE.Mesh(new THREE.CapsuleGeometry(0.07, 0.24, 4, 8), shell);
-  armL.position.set(-0.4, 1.1, 0); armL.rotation.z = 0.35; g.add(armL);
-  const armR = armL.clone(); armR.position.x = 0.4; armR.rotation.z = -0.35; g.add(armR);
-  // hover base
-  const base = new THREE.Mesh(new THREE.CylinderGeometry(0.24, 0.16, 0.24, 12), dark);
-  base.position.y = 0.74; g.add(base);
-  const halo = new THREE.Mesh(new THREE.TorusGeometry(0.26, 0.035, 5, 14), glowM);
-  halo.position.y = 0.62; halo.rotation.x = Math.PI / 2; g.add(halo);
-  const thr = new THREE.Mesh(new THREE.ConeGeometry(0.17, 0.3, 8, 1, true), new THREE.MeshBasicMaterial({ color: hex, transparent: true, opacity: 0.28, side: THREE.DoubleSide }));
-  thr.position.y = 0.45; thr.rotation.x = Math.PI; g.add(thr);
-  // antenna
-  const ant = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.012, 0.26, 5), dark);
-  ant.position.set(0.12, 1.65, -0.04); g.add(ant);
-  const tip = new THREE.Mesh(new THREE.SphereGeometry(0.045, 8, 6), glowM);
-  tip.position.set(0.12, 1.79, -0.04); g.add(tip);
-  g.userData = { body, visor, eyes, armL, armR, halo, thr, tip, base, accent };
+function npcBody(hex, skin = 0xe8eef2) {
+  const g = astronaut(skin);
+  const u = g.userData;
+  const accent = new THREE.MeshStandardMaterial({ color: hex, roughness: 0.5, metalness: 0.15, emissive: hex, emissiveIntensity: 0.08 });
+  // chest patch
+  const patch = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.16, 0.03), accent);
+  patch.position.set(0, 0.42, 0.205); u.hips.add(patch);
+  // shoulder flashes
+  for (const side of [-1, 1]) {
+    const flash = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.24, 0.26), accent);
+    flash.position.set(side * 0.36, 0.62, 0);
+    u.hips.add(flash);
+  }
+  // helmet stripe + visor tint
+  const stripe = new THREE.Mesh(new THREE.TorusGeometry(0.29, 0.026, 6, 20), accent);
+  stripe.position.y = 0.03; stripe.rotation.x = Math.PI / 2;
+  u.head.add(stripe);
+  const visor = u.head.children.find(o => o.material && o.material.color && o.material.color.getHex() === 0x1b2c3b);
+  if (visor) { visor.material = visor.material.clone(); visor.material.emissive = new THREE.Color(hex); visor.material.emissiveIntensity = 0.22; }
+  // name light on the backpack
+  const lamp = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.04, 0.03), new THREE.MeshBasicMaterial({ color: hex }));
+  lamp.position.set(0, 0.66, -0.48); u.hips.add(lamp);
+  g.userData.accent = accent;
+  g.userData.flash = lamp;
   return g;
 }
 
@@ -286,25 +281,26 @@ export function findPath(fromX, fromZ, toNode) {
 export class Crew {
   constructor(scene, sim) {
     this.scene = scene; this.sim = sim;
-    this.bots = CREW.map(c => {
-      const mesh = botBody(c.hue);
+    this.npcs = CREW.map(c => {
+      const mesh = npcBody(c.hue);
       const st = STATIONS.find(s => s.id === c.home) || STATIONS[2];
       const homeNode = `${st.id}Door`;
       const p = NAV_NODES[homeNode] || NAV_NODES.hub;
-      const bot = {
-        ...c, mesh, state: 'idle', node: homeNode, path: [], speed: 2.1,
-        pos: new THREE.Vector3(p[0], 0, p[1]), target: null, facing: 0, bobSeed: Math.random() * 10,
+      const npc = {
+        ...c, mesh, state: 'idle', node: homeNode, path: [], speed: 1.25,
+        pos: new THREE.Vector3(p[0], 0, p[1]), target: null, facing: 0, seed: Math.random() * 10,
         talkUntil: 0, taskStation: null, timer: 2 + Math.random() * 4, patrol: null,
+        step: 0, moving: 0, speaking: false, barkAt: 0,
       };
-      bot.pos.y = heightAt(p[0], p[1]);
-      mesh.position.copy(bot.pos);
+      npc.pos.y = heightAt(p[0], p[1]);
+      mesh.position.copy(npc.pos);
       scene.add(mesh);
-      return bot;
+      return npc;
     });
-    this.byId = Object.fromEntries(this.bots.map(b => [b.id, b]));
+    this.byId = Object.fromEntries(this.npcs.map(b => [b.id, b]));
   }
 
-  bot(id) { return this.byId[id]; }
+  npc(id) { return this.byId[id]; }
 
   /** Send a bot to a station door node and mark what it is doing. */
   sendTo(id, nodeId, state) {
@@ -321,7 +317,7 @@ export class Crew {
   talkTo(id, until) { const b = this.byId[id]; if (b) { b.talkUntil = until; b.state = 'interacting'; } }
 
   update(dt, t, sim) {
-    for (const b of this.bots) {
+    for (const b of this.npcs) {
       const night = sim.sleeping;
       // finish short-lived states
       if (b.state === 'interacting' && t > b.talkUntil) b.state = 'idle';
@@ -359,7 +355,7 @@ export class Crew {
             b.facing = Math.atan2(Math.cos(a), Math.sin(a));
           }
         }
-        if (b.state !== 'interacting') b.facing += Math.sin(t * 0.4 + b.bobSeed) * dt * 0.3;
+        if (b.state !== 'interacting') b.facing += Math.sin(t * 0.4 + b.seed) * dt * 0.12;
       }
 
       // If the player is standing close, turn to face them.
@@ -368,17 +364,29 @@ export class Crew {
         b.facing = lerpAngle(b.facing, Math.atan2(pp.x - b.pos.x, pp.z - b.pos.z), dt * 3);
       }
       b.pos.y = heightAt(b.pos.x, b.pos.z);
-      const bob = Math.sin(t * 1.6 + b.bobSeed) * 0.05;
-      b.mesh.position.set(b.pos.x, b.pos.y + 0.12 + bob, b.pos.z);
+      b.mesh.position.copy(b.pos);
       b.mesh.rotation.y = b.facing;
-      // tiny animation: eyes blink, arms sway
+      // A real gait: legs and arms swing with the distance walked, not with a clock, so a person
+      // standing still stands still. Suited walking on the Moon is a slow, slightly bouncing lope.
+      const moved = Math.hypot(b.pos.x - (b.prevX ?? b.pos.x), b.pos.z - (b.prevZ ?? b.pos.z));
+      b.prevX = b.pos.x; b.prevZ = b.pos.z;
+      b.moving += ((moved > 0.002 ? 1 : 0) - b.moving) * Math.min(1, dt * 6);
+      b.step += moved * 3.4;
       const u = b.mesh.userData;
-      u.armL.rotation.x = Math.sin(t * 1.2 + b.bobSeed) * 0.16;
-      u.armR.rotation.x = -Math.sin(t * 1.2 + b.bobSeed) * 0.16;
-      u.halo.rotation.z = t * 0.8;
-      u.thr.material.opacity = 0.2 + Math.sin(t * 6 + b.bobSeed) * 0.08;
-      const blink = (Math.sin(t * 0.9 + b.bobSeed * 3) > 0.985) ? 0.02 : 1;
-      u.eyes.scale.y = blink;
+      const swing = Math.sin(b.step) * 0.55 * b.moving;
+      u.legL.rotation.x = swing;
+      u.legR.rotation.x = -swing;
+      u.armL.rotation.x = -swing * 0.65;
+      u.armR.rotation.x = swing * 0.65;
+      u.hips.position.y = 0.92 + Math.abs(Math.sin(b.step)) * 0.05 * b.moving;
+      // idle sway and looking around
+      u.hips.rotation.z = Math.sin(t * 0.9 + b.seed) * 0.015;
+      u.head.rotation.y = Math.sin(t * 0.5 + b.seed) * 0.22 * (1 - b.moving);
+      if (b.speaking) {
+        u.armR.rotation.x = -0.7 + Math.sin(t * 6.5) * 0.22;
+        u.head.rotation.y = Math.sin(t * 1.4) * 0.12;
+      }
+      if (u.flash) u.flash.material.color.setHex(b.speaking ? 0xffffff : b.hue);
     }
   }
 }
@@ -423,11 +431,14 @@ export class RoverCar {
     // slope check ahead
     const ahead = 1.9;
     const slope = slopeDeg(nx + fx * ahead, nz + fz * ahead);
+    const grip = traction(slope);
+    this.slipping = slope > SLOPE_SLIP_DEG * 0.75;
     this.tooSteep = slope > ROVER.slopeLimit && Math.abs(this.speed) > 0.6;
     if (this.tooSteep) {
       this.speed *= Math.max(0, 1 - dt * 6);
     } else {
-      this.pos.x = nx; this.pos.z = nz;
+      this.pos.x = nx * (1 - (1 - grip) * 0.35) + this.pos.x * ((1 - grip) * 0.35);
+      this.pos.z = nz * (1 - (1 - grip) * 0.35) + this.pos.z * ((1 - grip) * 0.35);
       collide(this.pos, 1.6);
       const d = Math.hypot(this.pos.x, this.pos.z);
       if (d > ROVER.spawnRadius) { this.pos.x *= ROVER.spawnRadius / d; this.pos.z *= ROVER.spawnRadius / d; this.speed *= 0.4; }
@@ -449,9 +460,11 @@ export class RoverCar {
     this.mesh.position.copy(this.pos);
     this.mesh.rotation.set(Math.atan2(hB - hF, 2 * e), this.heading, Math.atan2(hR - hL, 2 * e), 'YXZ');
     for (const w of this.mesh.userData.wheels) w.rotation.y += this.speed * dt * 1.4;
-    // battery
-    const drain = (Math.abs(this.speed) / maxSpeed) * 0.0022 + 0.00008;
-    this.reserve = clamp(this.reserve - drain * dt, 0.02, 1);
+    // Battery: 8.7 kWh of silver-zinc packs, 0.24 Wh per metre on the flat, a little more
+    // climbing. That works out at the LRV's published 36 km working range.
+    const metres = Math.abs(this.speed) * dt;
+    const wh = metres * (ROVER_PHYS.whPerMetre + slope * ROVER_PHYS.whPerMetreSlope);
+    this.reserve = clamp(this.reserve - wh / (ROVER_PHYS.batteryKwh * 1000) - dt * 0.00002, 0, 1);
     if (Math.floor(this.reserve * 1000) % 97 === 0 && this.sim.charging) this.reserve = clamp(this.reserve + dt * 0.004, 0, 1);
   }
 

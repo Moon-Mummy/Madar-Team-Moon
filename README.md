@@ -1,125 +1,167 @@
 # Madar-Team-Moon · مَدَار — فريق القمر
 
-A single-player, open-ended **Moon-colony learning sandbox** that runs in the browser. You are the new cadet at *Madar Outpost*, a small fictional base near the lunar south pole. Walk anywhere, talk to the five crew bots, inspect twelve stations, take the rover out to the craters, and help with eleven optional situations. Nothing is timed, nothing can fail, and there is no score.
+A single-player, open-ended **lunar colony** you can walk around, in the browser. You are the new cadet at *Madar Outpost* on **Connecting Ridge**, a real candidate region near the Moon's south pole, within sight of Shackleton. Five crew NPCs walk the ridge and **talk to you out loud**; twelve stations are open to inspect; a six-wheel rover takes you to Cabeus crater; and eleven optional situations are built from **measured mission data** rather than invented numbers. Nothing is timed, nothing can fail, and there is no score.
 
-Built from the **Luna Academy GDD / Blueprint** (v0.2 / v1.0) and the older *Moon Base Academy* / *moon-colony-project* prototypes, and rebuilt as a daytime-friendly, single-page 3D game.
+Version 2.0 — the Moon itself, speaking characters, real physics, real tasks, and artwork.
 
 ---
 
 ## Run it
 
-Requires only Node.js 18+ (no install, no build step, no dependencies).
+Node.js 18+ only. No install, no build step, no dependencies.
 
 ```bash
 node server.mjs          # http://localhost:8000
 PORT=3000 node server.mjs
 ```
 
-Or serve the folder with any static file server (`python3 -m http.server`, GitHub Pages, Netlify, an S3 bucket…). Opening `index.html` directly from the filesystem will **not** work: the game uses ES modules, which browsers block on `file://`. Everything it needs is in this repository — there is no CDN, no tracking, no network call at runtime.
+Any static file server works (`python3 -m http.server`, GitHub Pages, Netlify). Opening `index.html` from disk will **not** work: the game uses ES modules, which browsers block on `file://`. Everything it needs is in the repository — no CDN, no tracking, no network call at runtime.
+
+## What changed in 2.0
+
+**The world is the Moon.** The map is a 520 m walkable slice of the south pole with the real
+features that matter to a base there: **Shackleton** (21 km across, 4.2 km deep, sunlit rim),
+**Cabeus** (LCROSS's ice crater), **Malapert Massif**, and **Connecting Ridge** itself, where the
+outpost stands. Permanent shadows are dark and blue, ejecta rays are bright, and a coarse ring of
+terrain out to 900 m hides the edge of the world behind real ridges.
+
+**The characters speak.** Each of the five NPCs has their own voice (pitch, rate and a preferred
+system voice), speaks their greeting when you walk up, answers with one short spoken line, and
+barks at you as you pass. Text on screen is a subtitle with a replay button, not a wall of prose.
+Where a device has no speech engine the game says so and shows the same short lines.
+
+**They are people, not robots.** The hovering bots were replaced with suited astronauts built on
+the same rig as the player, with coloured shoulder flashes and visors. They walk with a gait driven
+by distance travelled, turn to face you, gesture while speaking, and stand still when standing.
+
+**Physics from measurements.** `src/physics.js` drives every number the player feels:
+
+| Quantity | Value used | Source |
+| --- | --- | --- |
+| Surface gravity | 1.62 m/s² | Apollo / standard lunar constant |
+| Hop apex | 1.45 m (`v = √(2gh)`) | suited astronaut on the Moon |
+| Walking / loping speed | 3.0 / 5.4 m/s | Apollo surface traverse rates |
+| Rover top speed | 5.0 m/s (18 km/h) | Apollo LRV |
+| Rover battery | 2 × 36 V × 121 Ah = 8.7 kWh | LRV silver-zinc packs |
+| Rover range | 0.24 Wh/m → 36 km | LRV working range |
+| Slope limit / slip | 16° / 20° | regolith angle of repose |
+| Dust arcs | parabolic under 1.62 m/s², no drag | vacuum |
+| Solar constant | 1361 W/m² | measured at 1 AU |
+| Light delay | 1.28 s each way | 384,400 km at c |
+| Surface dose | 0.5 mSv/day, 600 mSv career | NASA STD-3001 |
+
+The HUD prints the gravity, hop height and rover speed it is actually using, so the numbers can be
+checked against the motion.
+
+**Tasks are arithmetic on real data.** Eleven situations, each with a source line under it:
+
+| Situation | The real data behind it |
+| --- | --- |
+| Solar budget | ISS-class life support draws 9.6 kW; four 3.3 kW arrays; a dusty array reads 0.9 kW |
+| Water loop | ISS ECLSS: 98% recovery since 2023 (93% before), 3.2 kg water per person per day |
+| Fair test | Hydroponics under red/blue LEDs, one variable at a time |
+| Rover route | LRV limits: 210 kg, 490 kg payload, 18 km/h, 36 km range, 16° slope, 25% reserve |
+| Tired shift | 14 h on / 5 h asleep vs the 8.5 h sleep the plan allows |
+| Dusty airlock | Regolith grains 20–100 µm, sharp and glassy |
+| Radio shadow | 384,400 km → 1.28 s each way; line of sight, not more power |
+| 40 kg spare manifest | Mass budget: filter, seal, bearing, nutrient before wants |
+| Four samples | Anorthosite 4.4 Ga, mare basalt, impact breccia, glass beads |
+| A day that adds up | 24 h: sleep ≥8, work 6–8, exercise ≥2, meals ≥2, free ≥2 |
+| Solar storm drill | 1972 event between Apollo 16 and 17; 2–3 m of regolith for shelter |
+
+**Graphics.** Prefiltered sky reflections (PMREM) for every metal and visor, a two-octave procedural
+regolith shader with normal perturbation, long-shadow sun with a core/halo/streak glare, a
+higher-resolution Earth with an atmosphere rim, a far-field terrain ring, ballistic dust kicked by
+boots and wheels, ice glints inside Cabeus, a grain-and-vignette pass, and six AI-generated
+illustrations wired into the start screen, the field guide and four situations.
+
+**Bilingual.** English and Arabic, right-to-left, every string, with automatic detection on a first
+run and live switching. Font shaping, logical CSS properties and mirrored layout all work.
 
 ## Play
 
 | Action | Keyboard | Touch |
 | --- | --- | --- |
-| Walk | `W A S D` / arrow keys | left joystick |
-| Look around | drag with the mouse | drag anywhere |
-| Zoom | mouse wheel | — |
+| Walk | `W A S D` / arrows | left joystick |
+| Look | drag with the mouse | drag anywhere |
+| Zoom | wheel | — |
 | Interact / take a sample | `E` | **E** button |
-| Hop (lunar gravity, 1.62 m/s²) | `Space` | **⤒** button |
+| Hop | `Space` | **⤒** button |
 | Drive / leave the rover | `R` | **E** near the rover |
-| Situation board | `B` | board button |
-| Journal | `M` | journal button |
-| Field guide | `G` | guide button |
-| Pause, settings, help | `P` / `Esc` | gear button |
+| Board · Journal · Guide | `B` · `M` · `G` | corner buttons |
+| Pause, settings, help | `P` / `Esc` | gear |
 
-Progress is saved locally in `localStorage` about every twelve seconds and on leaving the page. Settings can reset it completely.
-
-## What is in it
-
-* **A walkable outpost** — habitat, suit airlock, mission control, science lab, medical bay, life support, greenhouse, workshop, rover garage, solar power station, comms relay, landing pad. Every building is inspectable; none is locked, and there is no required order.
-* **Five authored crew bots** — Maya (commander), Omar (life support), Amina (botanist), Leo (robotics and power), Sofia (medic). They walk a real navigation graph, go to work on the situation they are handling, and answer questions in authored dialogue — never generative AI.
-* **Eleven optional situations**, each with a hint ladder, calm feedback and a reflection step (plain explanation, skill label, an "on Earth" question with a reveal, and an optional *go deeper*):
-  1. Power budget — spot a dusty solar array, then shed loads without switching off life support.
-  2. Water loop — order the steps that make recycled water safe again.
-  3. Greenhouse — design a fair test, read it, and test a second factor.
-  4. Rover routing — choose a route from distance, slope and battery reserve.
-  5. Crew fatigue — a plan that protects a tired engineer *and* finishes the job.
-  6. Dusty airlock — brush, vacuum, inspect the seal, check the filter, log it.
-  7. Comms dropouts — fix line of sight with a ridge relay instead of more power.
-  8. Spare-parts budget — needs before wants, with 100 credits.
-  9. Rock identification — match four lunar samples to basalt, anorthosite, breccia and glassy regolith.
-  10. A fair 24-hour day — sleep, work, exercise, meals and free time.
-  11. Solar-storm drill — in, seal, count, monitor, all-clear.
-* **A rover** with six wheels, real terrain pitch and roll, slope limits, a battery reserve and three sample sites to log.
-* **31 journal cards**, a **field guide** (a day in the colony, the Moon's challenges, colony jobs, the water-and-crops loop, places, glossary, the real Moon, and how the game stays kind) and a **sample record**.
-* **Two full languages** — English and Arabic, right-to-left, with every string translated. The language is chosen by the start screen, in settings, or automatically from the browser on a fresh save.
-* **Accessibility** — adjustable text size, reduced motion, read-aloud (SpeechSynthesis), full keyboard play, no time pressure, no flashing.
-
-## Design rules it follows
-
-* One player, one Moon, one fictional outpost. No age gate, no account, no name, no chat, no ads, no analytics, no network dependency.
-* No countdowns, no fail state, no score, no leaderboard. Meters are bounded and labelled as simulated.
-* Situations are optional; they can be left, snoozed, or handed to the crew, who will solve them with a partial fix if ignored for about three colony hours. Rewards are applied once, so they cannot be farmed.
-* Wrong choices get an explanation and a retry — the bot says *"the sensor suggests…"*, never *"you failed"*.
-* Real-world science is presented carefully: regolith is sharp and abrasive, temperatures vary by place, ice mining is a developing technology, and Artemis plans change — the guide says to check nasa.gov.
+Progress saves to `localStorage` every twelve seconds and on leaving. Settings can reset it.
 
 ## Project layout
 
 ```
-index.html              page shell, HUD markup, inline SVG icons
+index.html              shell, HUD markup, inline SVG icons
 css/style.css           interface styles (logical properties, so RTL mirrors for free)
-src/main.js             renderer, camera, controls, interactions, game loop
-src/world.js            analytic lunar terrain, terrain mesh, every building and prop
-src/entities.js         astronaut, crew bots + A* -free BFS navigation, rover physics, collision
+assets/                 optional artwork (see assets/README.md — drop-in replaceable)
+src/main.js             renderer, environment map, camera, controls, dust, barks, loop
+src/world.js            analytic south-pole terrain, all buildings, sky, Earth, dust system
+src/lunar.js            real lunar constants, named features and their sources
+src/physics.js          gravity, hop, rover battery/range, traction, slope limits
+src/speech.js           per-character voices on the Web Speech API
+src/entities.js         astronaut rigs, NPC walking/gait, rover, collision
 src/sim.js              clock, meters, situation director, journal, saving
-src/activities.js       the six interaction types and the reflection step
-src/ui.js               HUD, world labels, dialogs, journal, guide, settings, minimap, input
-src/data.js             language-neutral world data: stations, crew, graph, cards, situations
+src/activities.js       the six task types, hint ladder, reflection step
+src/ui.js               HUD, world labels and speech bubbles, sheets, guide, Moon map
+src/data.js             stations, crew, navigation graph, cards, incidents
 src/scenarios.js        numbers and correct answers for every situation
-src/i18n.js             tiny locale loader with English fallback
-src/lang/en.js          English strings
-src/lang/ar.js          Arabic strings (identical key set)
-src/audio.js            synthesised sound effects (WebAudio, no files)
-vendor/three.module.min.js   Three.js r160 (MIT, licence included)
-tests/check-content.mjs content test: locale parity + scenario/structure consistency
+src/lang/en.js, ar.js   all prose (identical key sets)
+vendor/three.module.min.js   Three.js r160 (MIT)
+tests/check-content.mjs locale parity + puzzle solvability + physical-constant checks
 server.mjs              zero-dependency static server
 ```
 
 ### Changing content
 
-* Text lives only in `src/lang/*.js`; the same keys must exist in both files.
-* Numbers, correct answers and limits live in `src/scenarios.js`.
-* Stations, crew, the navigation graph, journal cards and timeline values live in `src/data.js`.
-
-Run the check after editing:
+Edit only `src/lang/*.js` for text, `src/scenarios.js` for numbers, `src/lunar.js` for measured
+constants, `src/data.js` for stations and crew. Then:
 
 ```bash
 npm test
 ```
 
-It verifies that every locale key exists in both languages, that every situation has its strings, that option counts and correct-answer indices line up, that the solar puzzle is solvable, that the budget has room to choose, and that the schedule puzzle starts from a real puzzle.
+The test checks both locales have every key, that each array of steps/options matches its
+specification, that the solar puzzle is solvable with life support on, that the manifest has a real
+choice in it, that the schedule can reach 24 hours inside its limits, and that gravity, the solar
+constant, the light delay and the rover's battery still agree with the measurements.
 
 ## Sources and honesty notes
 
-* The design brief came from a shared Drive folder containing the **Luna Academy System Design and Learning Blueprint**, the **Luna Academy GDD v0.2**, **Moon Colony Field Guide**, **Crew Bot Specification**, **Simulation and Incident Rules**, **Learning Curriculum Matrix**, **Optional Incident Catalogue**, and two older prototypes (`moon-colony-project` and a three.js *Moon Base Academy* quiz game). That material is the intellectual basis for the crew, tone, meters, incidents and learning loop. It is not redistributed here.
-* Drive was unreachable from the sandbox used to build this, so the documents and the prototypes' source were read through two public read-only proxies (`allorigins.hexlet.app`, `wsrv.nl`); four concept images were seen only as 200-pixel thumbnails. Where the older quiz conflicted with the GDD (fail screen, score ranks, age bands), the GDD won.
-* Unverifiable late-2026 programme claims in the Field Guide (for example an Artemis II already flown, an Artemis III crew, a “PROMISE” rover) were deliberately left out. Only well-established facts are used: Apollo 17 in 1972, the Artemis II crew names, and the south-pole sunlight-and-ice rationale.
-* This is a fan-made educational game. It is not a NASA product, not a training tool, and not a simulation of real mission procedure.
+* The design brief came from a shared Drive folder: the **Luna Academy System Design and Learning
+  Blueprint**, **GDD v0.2**, **Moon Colony Field Guide**, **Crew Bot Specification**, **Simulation
+  and Incident Rules**, curriculum matrix, incident catalogue, and two older prototypes. That
+  material is the intellectual basis for the crew, tone and learning loop; it is not redistributed.
+* Drive was unreachable from the sandbox used to build this, so documents were read as text through
+  two public read-only proxies. Measurements were re-checked against NASA, JAXA and Apollo sources.
+  Unverifiable late-2026 programme claims were left out; the Artemis II crew names and the 1972
+  solar storm are the newest things included.
+* Artwork in `assets/` was generated for this project with an image model. You can replace any file
+  with your own picture of the same name; see `assets/README.md`.
+* This is a fan-made educational game. It is not a NASA product and not a training tool.
 
 ## Licence
 
-* Code: **MIT** (see `LICENSE`). Do what you like, keep the notice.
-* Written content (the colony, the crew, the situations and the guide): **CC BY 4.0** — reuse and adapt with credit.
-* Three.js is MIT-licensed; its notice is in `vendor/THREE-LICENSE.txt`.
+Code **MIT** (see `LICENSE`); written content and artwork **CC BY 4.0**. Three.js is MIT; its notice
+is in `vendor/THREE-LICENSE.txt`.
 
 ---
 
 ## بالعربية
 
-**مَدَار — فريق القمر** لعبة تعليمية ثلاثية الأبعاد تعمل في المتصفح، للاعب واحد. أنت المتدرّب الجديد في محطة مَدَار قرب القطب الجنوبي للقمر: تمشَّ في القاعدة، تحدّث مع رفاق الطاقم الخمسة، تعرّف على اثنتي عشرة محطة، واخرج بالعربة إلى الصدع. لا وقت محدّد، ولا خسارة، ولا نقاط — أحد عشر موقفًا اختياريًا مع تلميحات وتفسير هادئ وسؤال للتفكير.
+**مَدَار — فريق القمر** نسخة 2.0: محطة قمرية يمكنك المشي فيها على «الحافة الرابطة» قرب القطب الجنوبي،
+بين شاكلتون وكابيوس، مع خمس شخصيات تمشي وتتحدث إليك بصوتها، واثنتي عشرة محطة، وعربة بست عجلات،
+وأحد عشر موقفًا مبنيًا على بيانات بعثات حقيقية.
 
-**التشغيل:** `node server.mjs` ثم افتح `http://localhost:8000` (أو استخدم أي خادم ملفات ثابت؛ فتح `index.html` مباشرة لا يعمل لأن اللعبة تستخدم وحدات ES).
+الفيزياء مقيسة: جاذبية 1.62 م/ث²، قفزة 1.45 م، عربة 18 كم/س و36 كم مدى، ميل أقصى 16°، وحدود إشعاع
+من معيار ناسا. النصوص مكتوبة لتُسمع: سطر قصير لكل شخصية، والنص على الشاشة ترجمة مع زر إعادة.
 
-**التحكم:** `W A S D` أو الأسهم للمشي، سحب الماوس للنظر، `E` للتفاعل، `R` للعربة، مسافة للقفز، `B` للوحة المواقف، `M` للدفتر، `G` للدليل، `Esc` للقائمة.
+**التشغيل:** `node server.mjs` ثم `http://localhost:8000`.
 
-اللعبة كاملة بالعربية والإنجليزية، مع دعم كامل للكتابة من اليمين إلى اليسار، وحفظ محلي للتقدّم على هذا الجهاز فقط.
+**التحكم:** `W A S D` للمشي، سحب الماوس للنظر، `E` للتفاعل، `R` للعربة، مسافة للقفز، `B` للوحة،
+`M` للدفتر، `G` للدليل، `Esc` للقائمة. اللعبة كاملة بالعربية مع دعم كامل للكتابة من اليمين إلى
+اليسار والحفظ المحلي.
