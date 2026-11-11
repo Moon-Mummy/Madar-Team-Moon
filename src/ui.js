@@ -5,7 +5,7 @@ import { STATIONS, CREW, INCIDENTS, CARDS, SAMPLE_SITES, GUIDE, JOBS, PLACES, GL
 import { sfx, setSound } from './audio.js';
 import { openSituation } from './activities.js';
 import { FEATURES, MOON, SOURCES } from './lunar.js';
-import { say, setSpeechEnabled, speechAvailable, stopSpeaking } from './speech.js';
+import { say, setSpeechEnabled, speechAvailable, stopSpeaking, playClip, speechStatus, voicePackSize } from './speech.js';
 
 const $ = id => document.getElementById(id);
 const E = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text !== undefined) n.textContent = text; return n; };
@@ -203,8 +203,8 @@ export class UI {
   // ------------------------------------------------------------------ world labels
   /** A character speaking: a short line above their head, plus a subtitle if it is long. */
   /** A small "say that again" button with a drawn speaker, so it works without emoji fonts. */
-  sayAgain(text, who) {
-    const b = btn('say-again', '', () => this.sayLine(who, text));
+  sayAgain(text, who, key = null) {
+    const b = btn('say-again', '', () => this.sayLine(who, text, key));
     b.setAttribute('aria-label', t('ui.sayAgain'));
     b.title = t('ui.sayAgain');
     b.innerHTML = '<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 9.5h3.2L12 5.6v12.8L7.2 14.5H4z"/><path d="M15.6 8.8a4.6 4.6 0 0 1 0 6.4"/><path d="M18.2 6.6a7.8 7.8 0 0 1 0 10.8"/></svg>';
@@ -586,7 +586,7 @@ export class UI {
     // The greeting is spoken, not printed. What is on screen is a subtitle with a replay button.
     const line = E('div', 'line');
     const text = E('p', null, t(`crew.${id}.greet`));
-    line.append(text, this.sayAgain(t(`crew.${id}.greet`), id));
+    line.append(text, this.sayAgain(t(`crew.${id}.greet`), id, `crew.${id}.greet`));
     body.append(line);
 
     const chips = E('div', 'topics');
@@ -594,7 +594,7 @@ export class UI {
       const chip = btn('opt', t(`ui.topics.${topic}`), () => {
         const reply = t(`talk.${id}.${topic}`);
         text.textContent = reply;
-        this.sayLine(id, reply);
+        this.sayLine(id, reply, `talk.${id}.${topic}`);
       });
       chips.append(chip);
     }
@@ -606,16 +606,16 @@ export class UI {
       avatar: t(`crew.${id}.name`).slice(0, 1), color: crew.color,
       body, foot: btn('btn', t('ui.close'), () => this.closeSheet()),
     });
-    this.sayLine(id, t(`crew.${id}.greet`));
+    this.sayLine(id, t(`crew.${id}.greet`), `crew.${id}.greet`);
   }
 
   /** Speak a line as a character and show it as a bubble over their head too. */
-  sayLine(id, text) {
+  sayLine(id, text, key = null) {
     const lang = this.sim?.settings?.lang || lang();
     if (text) {
       const npc = this.sim?.crew?.npc(id);
       if (npc) this.npcSay(npc, text);
-      say(id, text, { lang });
+      say(id, text, { lang, key });
     }
   }
 
@@ -856,11 +856,23 @@ export class UI {
       const b = btn('btn' + (sim.settings.voices !== false === on ? ' on' : ''), on ? t('ui.soundOn') : t('ui.soundOff'), () => {
         sim.settings.voices = on; sim.save();
         setSpeechEnabled(on);
-        if (on) say('maya', t('crew.maya.greet'), { lang: sim.settings.lang || lang() });
+        if (on) say('maya', t('crew.maya.greet'), { lang: sim.settings.lang || lang(), key: 'crew.maya.greet' });
         this.closeSheet(); this.openSettings();
       });
       vseg.append(b);
     }
+    vr.append(vseg);
+    // a test button, because "no voice" is almost always a device with no speech engine
+    const vst = speechStatus();
+    const testRow = row(t('ui.voiceTest'));
+    const testBox = E('div', 'vtest');
+    const testBtn = btn('btn', t('ui.voiceTestBtn'), () => {
+      if (sim.settings.voices === false) { sim.settings.voices = true; setSpeechEnabled(true); }
+      const greeting = t('crew.maya.greet');
+      if (!playClip('crew.maya.greet', 'maya', greeting)) say('maya', greeting, { lang: sim.settings.lang || lang(), key: 'crew.maya.greet' });
+    });
+    testBox.append(testBtn, E('p', 'voices-off', t('ui.voiceStatus', { n: vst.clips, v: vst.voices })));
+    testRow.append(testBox);
     vr.append(vseg);
     // read aloud
     const rr = row(t('ui.readAloud'));
@@ -904,7 +916,7 @@ export class UI {
     body.append(E('p', null, t('ui.aboutText')));
     body.append(E('div', 'note', t('ui.foot')));
     this.sheetShell({
-      title: t('ui.settings'), sub: 'Madar-Team-Moon 2.0', avatar: 'S', body, wide: false,
+      title: t('ui.settings'), sub: 'Madar-Team-Moon 2.2', avatar: 'S', body, wide: false,
       foot: btn('btn', t('ui.close'), () => this.closeSheet()),
     });
   }

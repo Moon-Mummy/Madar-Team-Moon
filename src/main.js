@@ -8,7 +8,7 @@ import { STATIONS, CREW, SAMPLE_SITES, SUITS, stationById } from './data.js';
 import { t, setLang } from './i18n.js';
 import { sfx, resumeAudio } from './audio.js';
 import { HUD_PHYSICS, HOP_APEX_M, G } from './physics.js';
-import { say, setSpeechEnabled, onSpeech, stopSpeaking, speechAvailable } from './speech.js';
+import { say, setSpeechEnabled, onSpeech, stopSpeaking, speechAvailable, primeAudio } from './speech.js';
 
 const canvas = document.getElementById('game');
 const loading = document.getElementById('loading');
@@ -103,6 +103,12 @@ class Controls {
     this.yaw -= dx * 0.006;
     this.pitch = Math.max(0.03, Math.min(1.15, this.pitch + dy * 0.004));
   }
+}
+
+// Browsers only allow audio after a gesture; prime the channel on the first tap or key so the
+// crew's first line is not swallowed by the autoplay policy.
+for (const ev of ['pointerdown', 'keydown', 'touchstart']) {
+  window.addEventListener(ev, () => primeAudio(), { once: true, passive: true });
 }
 
 const controls = new Controls();
@@ -245,10 +251,19 @@ function act() {
   else if (focus.type === 'rover') toggleRover();
 }
 
+// The cadet speaks too, in short callouts: recorded lines that play even with no speech engine.
+function playerSay(key, text) {
+  if (sim.settings.voices === false) return;
+  const lg = sim.settings.lang || INITIAL_LANG;
+  if (String(lg).slice(0, 2) !== 'en') return;   // the recorded pack is English
+  say('player', text, { lang: lg, key });
+}
+
 function logSample(site) {
   if (sim.samples.has(site.id)) { ui.toast(t('ui.sampleLogged')); return; }
   if (sim.logSample(site.id)) {
     sfx('good');
+    playerSay('player.sample', 'Sample logged.');
     ui.toast(t('ui.sampleLogged') + ' · ' + t(`sampleSite.${site.id}`));
     if (sim.samples.size >= SAMPLE_SITES.length) ui.toast(t('rover.logAll'));
   }
@@ -274,6 +289,7 @@ function toggleRover() {
   sim.driving = true;
   sim.rover.enter();
   sim.player.mesh.visible = false;
+  playerSay('player.letsgo', "Let's go.");
   controls.yaw = sim.rover.heading;
   controls.pitch = 0.38;
   controls.dist = 10.5; controls.targetDist = 10.5;
@@ -383,7 +399,7 @@ function updateBarks(now) {
     npc.barkAt = now + 46 + Math.random() * 30;
     npc.speaking = true;
     ui.npcSay(npc, line);
-    say(npc.id, line, { lang });
+    say(npc.id, line, { lang, key: `bark.${npc.id}.${i}` });
     break;
   }
 }

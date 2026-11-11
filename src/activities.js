@@ -69,7 +69,7 @@ class Activity {
     this.render();
     // A little artwork at the top of the sheet, when there is a picture for this task.
     // The situation opens with the crew member speaking, not with a wall of text.
-    this.ui.sayLine?.(this.crew.id, this.tt(`inc.${this.id}.npc`));
+    this.ui.sayLine?.(this.crew.id, this.tt(`inc.${this.id}.npc`), `inc.${this.id}.npc`);
     return this;
   }
 

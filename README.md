@@ -17,6 +17,17 @@ PORT=3000 node server.mjs
 
 Any static file server works (`python3 -m http.server`, GitHub Pages, Netlify). Opening `index.html` from disk will **not** work: the game uses ES modules, which browsers block on `file://`. Everything it needs is in the repository — no CDN, no tracking, no network call at runtime.
 
+## What changed in 2.2
+
+- **The crew now have real recorded voices.** Every greeting, bark, spoken answer, incident brief and
+  the cadet's own callouts are 55 audio clips in `assets/voice/`, generated once and shipped with the
+  game. Browser speech synthesis is no longer required: on systems with no installed voice engine
+  (many Linux installs report zero voices) the recorded pack plays instead.
+- **Voice check** in Settings plays a sample and reports how many recorded lines and browser voices
+  the device has, so a silent machine is diagnosable in one tap.
+- Audio is primed on the first tap or key, so the browser's autoplay policy cannot swallow the first
+  line, and lines still fall back to the speech engine when a recording does not exist.
+
 ## What changed in 2.1
 
 - **Suit and helmet reworked.** The crew and the player now wear an Apollo/Artemis-style EVA suit:

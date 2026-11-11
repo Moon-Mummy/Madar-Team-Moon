@@ -12,6 +12,9 @@ const PERSONA = {
 };
 
 const listeners = new Set();
+const clips = new Map();          // key -> { file, text }, from assets/voice/pack.json
+let clipsReady = false;
+let currentAudio = null;
 let voices = [];
 let ready = false;
 let current = null;
@@ -35,7 +38,55 @@ if (typeof window !== 'undefined' && canSpeak()) {
   setTimeout(loadVoices, 1800);
 }
 
-export const speechAvailable = () => canSpeak();
+// A recorded pack ships with the game: browser speech engines are missing on plenty of systems
+// (Linux without speech-dispatcher reports zero voices), so the crew's key lines are real audio
+// files that always play. Anything without a recording still goes through the engine when there is
+// one, and the subtitle carries the words when there is not.
+const VOICE_BASE = new URL('../assets/voice/', import.meta.url);
+
+export async function loadVoicePack() {
+  try {
+    const res = await fetch(new URL('pack.json', VOICE_BASE));
+    if (!res.ok) return 0;
+    const data = await res.json();
+    for (const [key, val] of Object.entries(data)) clips.set(key, val);
+    clipsReady = true;
+    return clips.size;
+  } catch (e) { return 0; }
+}
+loadVoicePack();
+
+export const voicePackSize = () => clips.size;
+export const hasClip = key => clips.has(key);
+export const speechStatus = () => ({ tts: canSpeak(), voices: voices.length, clips: clips.size });
+
+function stopClip() {
+  if (!currentAudio) return;
+  try { currentAudio.pause(); currentAudio.currentTime = 0; } catch (e) { /* ignore */ }
+  currentAudio = null;
+}
+
+/** Play a recorded line. Returns false if the key has no recording or playback is blocked. */
+export function playClip(key, who = 'narrator', text = '') {
+  const rec = clips.get(key);
+  if (!rec) return false;
+  try {
+    stopClip();
+    const a = new Audio(new URL(rec.file, VOICE_BASE).href);
+    a.preload = 'auto';
+    a.volume = 1;
+    currentAudio = a;
+    const done = () => { if (currentAudio === a) currentAudio = null; emit(false, who, text || rec.text || ''); };
+    a.onended = done;
+    a.onerror = done;
+    emit(true, who, text || rec.text || '');
+    const pr = a.play();
+    if (pr && pr.catch) pr.catch(() => { /* autoplay blocked: the subtitle still reads it */ });
+    return true;
+  } catch (e) { return false; }
+}
+
+export const speechAvailable = () => canSpeak() || clips.size > 0;
 export const speechReady = () => ready;
 export const setSpeechEnabled = on => { enabled = !!on; if (!enabled) stopSpeaking(); };
 export const speechEnabled = () => enabled;
@@ -60,9 +111,15 @@ function pickVoice(lang, prefer = []) {
   return (local[0] || pool[0]) || null;
 }
 
-/** Speak a line as a character. Returns false when the device has no speech engine. */
-export function say(who, text, { lang = 'en', interrupt = true, volume = 1 } = {}) {
-  if (!enabled || !canSpeak() || !text) return false;
+/** Speak a line as a character: a recorded clip when we have one, otherwise the speech engine. */
+export function say(who, text, { lang = 'en', interrupt = true, volume = 1, key = null } = {}) {
+  if (!enabled) return false;
+  const english = String(lang || 'en').slice(0, 2).toLowerCase() === 'en';
+  if (key && english && clips.has(key)) {
+    if (interrupt) stopSpeaking();
+    if (playClip(key, who, text)) return true;
+  }
+  if (!canSpeak() || !text) return false;
   const clean = String(text).replace(/[•●—–]/g, ' ').replace(/\s+/g, ' ').trim();
   if (!clean) return false;
   const profile = PERSONA[who] || PERSONA.narrator;
@@ -88,9 +145,23 @@ export function say(who, text, { lang = 'en', interrupt = true, volume = 1 } = {
 export const narrate = (text, opts = {}) => say('narrator', text, opts);
 
 export function stopSpeaking() {
+  stopClip();
   if (!canSpeak()) return;
   try { window.speechSynthesis.cancel(); } catch (e) { /* ignore */ }
   current = null;
+}
+
+/** Called on the first real tap or key: browsers only allow audio after a gesture. */
+let primed = false;
+export function primeAudio() {
+  if (primed) return;
+  primed = true;
+  try {
+    const a = new Audio();
+    a.volume = 0;
+    const p = a.play();
+    if (p && p.catch) p.catch(() => {});
+  } catch (e) { /* ignore */ }
 }
 
 export const speakingWho = () => current;
