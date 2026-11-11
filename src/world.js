@@ -19,7 +19,7 @@ export function heightAt(x, z) {
   const amp = smooth(44, 68, d) + 0.22;
   h += amp * (1.5 * Math.sin(x * 0.052) * Math.cos(z * 0.061) + 0.9 * Math.sin((x + z) * 0.031 + 1.7) + 0.55 * Math.cos(z * 0.083 - 0.4));
   // Relay hill (south-west), soft gaussian so the mast has height.
-  h += 9.0 * Math.exp(-(((x + 30) ** 2 + (z + 14) ** 2) / (2 * 15 * 15)));
+  h += 7.0 * Math.exp(-(((x + 30) ** 2 + (z + 14) ** 2) / (2 * 21 * 21)));
   // Craters: shallow bowl plus a rim that rises above the surroundings.
   for (const c of CRATERS) {
     const dd = Math.hypot(x - c.x, z - c.z) / c.r;
@@ -596,36 +596,79 @@ function makeRobot(color = 0xd8b25a) {
 // The rover the player can drive.
 // ---------------------------------------------------------------------------------------------
 export function makeRover() {
+  // Modelled on the Apollo LRV: open chassis, two seats, a T-handle, four wire-mesh wheels and a
+  // folded solar wing. Local +Z is forward, so the model lines up with the driving maths.
   const g = new THREE.Group();
-  add(g, G.box, lam(0xe4e8ea, { rough: 0.55, metal: 0.2 }), [0, 1.05, 0], [4.6, 0.9, 2.5]);
-  add(g, G.box, lam(0xc56b3e, { rough: 0.6 }), [0, 1.55, 0], [2.2, 0.15, 1.9]);
-  // cabin with big windows
-  const cab = new THREE.Group(); cab.position.set(1.05, 1.5, 0);
-  add(cab, G.box, lam(0xd9dee1), [0, 0.35, 0], [1.9, 1.0, 2.1]);
-  const glass = new THREE.MeshStandardMaterial({ color: 0x9fd8ea, transparent: true, opacity: 0.55, roughness: 0.08, metalness: 0.3 });
-  add(cab, G.box, glass, [0.02, 0.45, 1.06], [1.6, 0.62, 0.06]);
-  add(cab, G.box, glass, [0.02, 0.45, -1.06], [1.6, 0.62, 0.06]);
-  add(cab, G.box, glass, [0.96, 0.45, 0], [0.06, 0.62, 1.7]);
-  add(cab, G.box, glow(0xffe6b0), [0.98, 0.2, 0], [0.05, 0.16, 1.2]);
-  g.add(cab);
-  // solar wing
-  add(g, G.box, lam(0x22335e, { metal: 0.7, rough: 0.25 }), [0, 1.62, 0], [4.2, 0.05, 2.3]);
-  add(g, G.box, lam(0x2d4478, { metal: 0.7, rough: 0.2 }), [-2.9, 1.62, 0], [1.4, 0.04, 1.6]);
-  // sample rack at the back
-  add(g, G.box, lam(0x7d6a3d), [-2.0, 1.35, 0], [0.9, 0.5, 1.6]);
-  // six wheels
-  const wheels = [];
-  const wheelGeo = new THREE.CylinderGeometry(0.62, 0.62, 0.42, 14);
-  const wheelMat = lam(0x2f343a, { rough: 1 });
-  for (const x of [1.55, 0, -1.55]) for (const z of [1.3, -1.3]) {
-    const w = new THREE.Mesh(wheelGeo, wheelMat);
-    w.rotation.x = Math.PI / 2; w.position.set(x, 0.62, z);
-    w.castShadow = true; g.add(w); wheels.push(w);
-    add(g, G.box, metalMat(), [x, 0.95, z * 0.82], [0.22, 0.5, 0.22]);
+  const hull = lam(0xe8ecef, { rough: 0.55, metal: 0.2 });
+  const dark = lam(0x2f343a, { rough: 0.9 });
+  const alloy = metalMat();
+  const accent = lam(0xc56b3e, { rough: 0.6 });
+
+  // chassis, hull and the orange stripe that makes it read at a distance
+  add(g, G.box, alloy, [0, 0.44, 0], [1.66, 0.1, 2.95]);
+  add(g, G.box, hull, [0, 0.78, -0.1], [1.52, 0.46, 2.7]);
+  add(g, G.box, accent, [0, 0.86, -0.1], [1.54, 0.1, 2.72]);
+  add(g, G.box, dark, [0, 0.62, 1.3], [1.4, 0.08, 0.34]);
+  add(g, G.box, alloy, [0, 0.52, 1.5], [1.5, 0.14, 0.1]);
+
+  // two seats, side by side
+  const seatMat = lam(0x59636e, { rough: 0.85 });
+  for (const xside of [-1, 1]) {
+    add(g, G.box, seatMat, [xside * 0.38, 1.02, 0.22], [0.5, 0.1, 0.5]);
+    add(g, G.box, seatMat, [xside * 0.38, 1.22, -0.04], [0.5, 0.42, 0.1]);
+    add(g, G.box, lam(0xd8dde1, { rough: 0.7 }), [xside * 0.38, 1.08, 0.22], [0.44, 0.03, 0.44]);
   }
+  // control console + T-handle
+  add(g, G.box, hull, [0, 1.09, 0.72], [0.56, 0.22, 0.3]);
+  add(g, G.box, lam(0x24303c, { rough: 0.5 }), [0, 1.16, 0.62], [0.34, 0.12, 0.04]);
+  add(g, G.cyl8, alloy, [0, 1.28, 0.84], [0.035, 0.42, 0.035]);
+  add(g, G.box, alloy, [0, 1.49, 0.84], [0.3, 0.05, 0.05]);
+
+  // battery / life-support boxes and the sample rack on the tail
+  add(g, G.box, hull, [0, 1.06, -1.02], [1.38, 0.3, 0.5]);
+  add(g, G.box, accent, [0, 1.22, -1.02], [1.3, 0.04, 0.42]);
+  add(g, G.box, lam(0x7d6a3d), [0, 1.16, -1.35], [1.2, 0.42, 0.2]);
+  for (let i = -2; i <= 2; i++) {
+    add(g, G.cyl8, lam(0x9aa2a8, { metal: 0.5 }), [i * 0.22, 1.42, -1.35], [0.055, 0.26, 0.055]);
+  }
+  // folded solar wing over the tail, tipped up so it never hides the seats
+  const wing = add(g, G.box, lam(0x1d2c52, { metal: 0.7, rough: 0.25 }), [0, 1.5, -1.08], [1.3, 0.03, 0.8]);
+  wing.rotation.x = -0.38;
+  for (const side of [-1, 1]) add(g, G.box, alloy, [side * 0.62, 1.47, -1.08], [0.04, 0.05, 0.84]).rotation.x = -0.38;
+  for (let i = -2; i <= 2; i++) add(g, G.box, lam(0x35508c, { metal: 0.6, rough: 0.3 }), [i * 0.24, 1.505, -1.06], [0.02, 0.02, 0.76]).rotation.x = -0.38;
+
+  // fenders
+  for (const x of [-0.95, 0.95]) for (const z of [-1.05, 1.05]) {
+    add(g, G.box, hull, [x * 1.03, 0.96, z], [0.24, 0.05, 0.7]);
+  }
+
+  // four wheels, axle along X, wire-mesh look via a hub disc
+  const wheels = [];
+  const wheelGeo = new THREE.CylinderGeometry(0.42, 0.42, 0.3, 20);
+  wheelGeo.rotateZ(Math.PI / 2);
+  const wheelMat = lam(0x3a4046, { rough: 1 });
+  for (const x of [-0.95, 0.95]) for (const z of [-1.05, 1.05]) {
+    const w = new THREE.Mesh(wheelGeo, wheelMat);
+    w.position.set(x, 0.42, z);
+    w.castShadow = true; g.add(w); wheels.push(w);
+    for (const side of [-1, 1]) {
+      const hub = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.2, 0.04, 14), alloy);
+      hub.geometry.rotateZ(Math.PI / 2);
+      hub.position.set(x + side * 0.16, 0.42, z);
+      g.add(hub);
+    }
+    // suspension arm
+    add(g, G.cyl8, alloy, [x * 0.72, 0.46, z], [0.05, 0.42, 0.05]).rotation.z = Math.PI / 2.4;
+  }
+
+  // lights and antenna
+  add(g, G.box, glow(0xffe6b0), [0.44, 0.62, 1.58], [0.24, 0.12, 0.05]);
+  add(g, G.box, glow(0xffe6b0), [-0.44, 0.62, 1.58], [0.24, 0.12, 0.05]);
+  add(g, G.cyl8, alloy, [-0.62, 1.65, -1.3], [0.02, 1.1, 0.02]);
+  add(g, G.sph, glow(0xffca7a), [-0.62, 2.2, -1.3], 0.07);
+  add(g, G.cyl8, alloy, [0.62, 1.1, -1.35], [0.015, 0.5, 0.015]);
+
   g.userData.wheels = wheels;
-  add(g, G.cyl8, metalMat(), [-1.7, 1.85, 0.7], [0.06, 1.4, 0.06]);
-  add(g, G.sph, glow(0xffca7a), [-1.7, 2.55, 0.7], 0.09);
   return g;
 }
 

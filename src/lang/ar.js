@@ -114,6 +114,8 @@ export default {
     roverSlope: 'حد الميل',
     roverExitFar: 'اقترب من المحطة لتخرج',
     roverStuck: 'العجلات تنزلق — تراجع قليلًا',
+    tap: 'المس',
+    roverSteep: 'سير بطيء — المنحدر أشد من حد 16° المسموح للمركبة',
     sampleTaken: 'العينة في الحامل',
     sampleRack: 'الحامل',
     sampleLogged: 'مسجّلة سابقًا',

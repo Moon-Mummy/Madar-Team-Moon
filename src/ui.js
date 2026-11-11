@@ -18,6 +18,7 @@ export class UI {
     this.modal = $('modal'); this.sheet = $('sheet');
     this.onSheetClose = null;
     this.toastCount = 0;
+    this.coarse = !!(window.matchMedia && window.matchMedia('(pointer: coarse)').matches);
     this.lastHud = 0; this.lastMap = 0;
     this.labelEls = new Map();
     this.focus = null;
@@ -391,8 +392,11 @@ export class UI {
   prompt(key, text) {
     const el = $('prompt');
     el.replaceChildren();
-    if (key) el.append(E('span', 'key', key));
+    // On a phone there is no E or R key: the chip itself is the button, so label it "tap".
+    const label = key ? (this.coarse ? this.t('ui.tap') : key) : '';
+    if (label) el.append(E('span', 'key', label));
     el.append(E('span', null, text));
+    el.classList.toggle('tappable', !!key);
     el.hidden = false;
   }
   hidePrompt() { $('prompt').hidden = true; }
@@ -974,8 +978,8 @@ export class UI {
       const d = Math.hypot(dx, dy) || 1;
       const f = Math.min(1, max / d);
       knob.style.transform = `translate(${dx * f}px,${dy * f}px)`;
-      input.left = dx < -max * 0.28 && Math.abs(dx) > Math.abs(dy) * 0.5;
-      input.right = dx > max * 0.28 && Math.abs(dx) > Math.abs(dy) * 0.5;
+      input.left = dx < -max * 0.26 && Math.abs(dx) > Math.abs(dy) * 0.32;
+      input.right = dx > max * 0.26 && Math.abs(dx) > Math.abs(dy) * 0.32;
       input.forward = dy < -max * 0.28;
       input.back = dy > max * 0.28;
       input.run = d > max * 1.4;
@@ -993,6 +997,10 @@ export class UI {
     stick.addEventListener('pointerup', endStick);
     stick.addEventListener('pointercancel', endStick);
     $('bAct').addEventListener('click', () => this.onAct?.());
+    // The world prompt is tappable too: enter the rover, talk, log a sample, get out.
+    const promptEl = $('prompt');
+    promptEl.setAttribute('role', 'button');
+    promptEl.addEventListener('click', e => { e.preventDefault(); this.onPrompt?.(); });
     $('bJump').addEventListener('click', () => { this.controls?.hop(); });
   }
 

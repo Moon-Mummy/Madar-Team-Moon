@@ -115,6 +115,8 @@ export default {
     roverSlope: 'Slope limit',
     roverExitFar: 'Drive closer to the airlock to get out',
     roverStuck: 'Wheels slipping \u2014 reversing a little',
+    tap: 'Tap',
+    roverSteep: 'Slow going \u2014 this bank is steeper than the rover\u2019s 16\u00b0 limit',
     sampleTaken: 'Sample in the rack',
     sampleRack: 'Rack',
     sampleLogged: 'Already logged',

@@ -1,8 +1,8 @@
 # Madar-Team-Moon · مَدَار — فريق القمر
 
-A single-player, open-ended **lunar colony** you can walk around, in the browser. You are the new cadet at *Madar Outpost* on **Connecting Ridge**, a real candidate region near the Moon's south pole, within sight of Shackleton. Five crew NPCs walk the ridge and **talk to you out loud**; twelve stations are open to inspect; a six-wheel rover takes you to Cabeus crater; and eleven optional situations are built from **measured mission data** rather than invented numbers. Nothing is timed, nothing can fail, and there is no score.
+A single-player, open-ended **lunar colony** you can walk around, in the browser. You are the new cadet at *Madar Outpost* on **Connecting Ridge**, a real candidate region near the Moon's south pole, within sight of Shackleton. Five crew NPCs walk the ridge and **talk to you out loud**; twelve stations are open to inspect; a four-wheel rover takes you to Cabeus crater; and eleven optional situations are built from **measured mission data** rather than invented numbers. Nothing is timed, nothing can fail, and there is no score.
 
-Version 2.0 — the Moon itself, speaking characters, real physics, real tasks, and artwork.
+Version 2.1 — the Moon itself, speaking characters, real physics, real tasks, artwork, and a suit and rover that look the part.
 
 ---
 
@@ -16,6 +16,21 @@ PORT=3000 node server.mjs
 ```
 
 Any static file server works (`python3 -m http.server`, GitHub Pages, Netlify). Opening `index.html` from disk will **not** work: the game uses ES modules, which browsers block on `file://`. Everything it needs is in the repository — no CDN, no tracking, no network call at runtime.
+
+## What changed in 2.1
+
+- **Suit and helmet reworked.** The crew and the player now wear an Apollo/Artemis-style EVA suit:
+  gold sun visor over a white helmet shell, hard upper torso, chest control module, life-support
+  backpack, bearing rings at every joint, grey gloves and big regolith boots. Each NPC has a painted
+  helmet crown and a shoulder flash in their own colour.
+- **Rover controls fixed.** The rover used to stall dead on any bank steeper than 16°: pressing
+  forward did nothing, which is exactly what "the stick is jammed" feels like. Slope is now a speed
+  penalty (38 % on steep ground) plus a warning, never a lock, and the wheels keep turning.
+- **Rover model rebuilt** on the LRV layout — open chassis, two seats, T-handle, cargo rack, folded
+  solar wing, four big wheels — and it now faces the way it drives (the old mesh was mounted sideways).
+- **A clear parking apron** and a driving camera that stays out of buildings.
+- **Touch controls actually work end to end**: joystick, entering and leaving the rover, taking a
+  sample, and every on-screen prompt is tappable with a "Tap" label instead of a keyboard key.
 
 ## What changed in 2.0
 
@@ -86,8 +101,9 @@ run and live switching. Font shaping, logical CSS properties and mirrored layout
 | Look | drag with the mouse | drag anywhere |
 | Zoom | wheel | — |
 | Interact / take a sample | `E` | **E** button |
-| Hop | `Space` | **⤒** button |
-| Drive / leave the rover | `R` | **E** near the rover |
+| Hop | `Space` | round arrow button |
+| Drive / leave the rover | `R` | **E** near the rover, or tap the prompt |
+| Get out while driving | `R` | tap the **Get out** chip |
 | Board · Journal · Guide | `B` · `M` · `G` | corner buttons |
 | Pause, settings, help | `P` / `Esc` | gear |
 

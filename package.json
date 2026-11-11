@@ -1,6 +1,6 @@
 {
   "name": "madar-team-moon",
-  "version": "1.0.0",
+  "version": "2.1.0",
   "description": "Madar-Team-Moon — a single-player, open Moon-colony learning sandbox that runs in the browser.",
   "private": true,
   "type": "module",

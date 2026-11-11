@@ -77,7 +77,7 @@ export const SAMPLE_SITES = [
 // Rover figures come straight from the Apollo LRV: 210 kg empty, 490 kg payload, 18 km/h,
 // 36 V silver-zinc packs, 36 km working range. `slopeLimit` is the regolith angle of repose.
 export const ROVER = {
-  park: [2.6, 9.2], heading: -2.14, spawnRadius: 146,
+  park: [22, 18], heading: 0.78, spawnRadius: 146,
   maxSpeed: ROVER_PHYS.topSpeed, slopeLimit: SLOPE_LIMIT_DEG,
   massKg: ROVER_PHYS.massKg, payloadKg: ROVER_PHYS.payloadKg,
 };

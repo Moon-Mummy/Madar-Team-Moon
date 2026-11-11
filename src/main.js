@@ -134,6 +134,14 @@ function createSim(fresh) {
   sim.player.mesh.userData.suit.color.set(sim.suitColor);
   ui.attach({ sim, world, camera, controls, onBegin: (f, color) => beginSession(f, color) });
   ui.onAct = act;
+  ui.onPrompt = () => {
+    if (!started || ui.modalOpen) return;
+    if (sim.driving) {
+      const site = sim.rover.nearestSite();
+      if (site && Math.abs(sim.rover.speed) < 2.2) logSample(site);
+      else toggleRover();
+    } else act();
+  };
   ui.onRover = toggleRover;
   bindWorldInteractions();
 }
@@ -267,8 +275,8 @@ function toggleRover() {
   sim.rover.enter();
   sim.player.mesh.visible = false;
   controls.yaw = sim.rover.heading;
-  controls.pitch = 0.3;
-  controls.dist = 13; controls.targetDist = 13;
+  controls.pitch = 0.38;
+  controls.dist = 10.5; controls.targetDist = 10.5;
   ui.toast(t('rover.hint'));
   sfx('open');
 }
@@ -296,7 +304,7 @@ function updateCamera(dt) {
       let diff = ((target - controls.yaw + Math.PI) % (Math.PI * 2)) - Math.PI;
       if (diff < -Math.PI) diff += Math.PI * 2;
       controls.yaw += diff * Math.min(1, dt * 2.6);
-      camTarget.copy(sim.rover.pos).add(new THREE.Vector3(0, 2.2, 0));
+      camTarget.copy(sim.rover.pos).add(new THREE.Vector3(0, 2.45, 0));
     } else {
       camTarget.copy(sim.player.pos).add(new THREE.Vector3(0, 1.35, 0));
     }
@@ -332,6 +340,9 @@ function updateCamera(dt) {
       break;
     }
   }
+  // If the pull-back still lands inside a building, lift the camera above the roofs instead of
+  // staring at the inside of a wall.
+  if (insideBlock(sx, sz, 0.6)) sy = Math.max(sy, 8.6);
   desired.set(sx, Math.max(sy, heightAt(sx, sz) + 1.2), sz);
   camera.position.lerp(desired, started ? Math.min(1, dt * 9) : Math.min(1, dt * 3));
   camera.lookAt(camTarget);
@@ -397,6 +408,7 @@ function loop() {
     world.fill.target.position.set(p.x, 1, p.z);
     world.fill.target.updateMatrixWorld();
     if (sim.rover.stuckWarn) { sim.rover.stuckWarn = false; ui.toast(t('ui.roverStuck')); }
+    if (sim.rover.steepWarn) { sim.rover.steepWarn = false; ui.toast(t('ui.roverSteep'), 'quiet'); }
     updateDust(dt);
     updateBarks(tNow);
     // rover recharges slowly at the garage
