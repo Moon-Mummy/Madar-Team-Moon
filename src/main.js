@@ -8,7 +8,7 @@ import { STATIONS, CREW, SAMPLE_SITES, SUITS, stationById } from './data.js';
 import { t, setLang } from './i18n.js';
 import { sfx, resumeAudio } from './audio.js';
 import { HUD_PHYSICS, HOP_APEX_M, G } from './physics.js';
-import { say, setSpeechEnabled, onSpeech, stopSpeaking, speechAvailable } from './speech.js';
+import { say, setSpeechEnabled, onSpeech, stopSpeaking, speechAvailable, primeAudio } from './speech.js';
 
 const canvas = document.getElementById('game');
 const loading = document.getElementById('loading');
@@ -105,6 +105,12 @@ class Controls {
   }
 }
 
+// Browsers only allow audio after a gesture; prime the channel on the first tap or key so the
+// crew's first line is not swallowed by the autoplay policy.
+for (const ev of ['pointerdown', 'keydown', 'touchstart']) {
+  window.addEventListener(ev, () => primeAudio(), { once: true, passive: true });
+}
+
 const controls = new Controls();
 const ui = new UI();
 ui.speaker = say;
@@ -134,6 +140,14 @@ function createSim(fresh) {
   sim.player.mesh.userData.suit.color.set(sim.suitColor);
   ui.attach({ sim, world, camera, controls, onBegin: (f, color) => beginSession(f, color) });
   ui.onAct = act;
+  ui.onPrompt = () => {
+    if (!started || ui.modalOpen) return;
+    if (sim.driving) {
+      const site = sim.rover.nearestSite();
+      if (site && Math.abs(sim.rover.speed) < 2.2) logSample(site);
+      else toggleRover();
+    } else act();
+  };
   ui.onRover = toggleRover;
   bindWorldInteractions();
 }
@@ -237,10 +251,19 @@ function act() {
   else if (focus.type === 'rover') toggleRover();
 }
 
+// The cadet speaks too, in short callouts: recorded lines that play even with no speech engine.
+function playerSay(key, text) {
+  if (sim.settings.voices === false) return;
+  const lg = sim.settings.lang || INITIAL_LANG;
+  if (String(lg).slice(0, 2) !== 'en') return;   // the recorded pack is English
+  say('player', text, { lang: lg, key });
+}
+
 function logSample(site) {
   if (sim.samples.has(site.id)) { ui.toast(t('ui.sampleLogged')); return; }
   if (sim.logSample(site.id)) {
     sfx('good');
+    playerSay('player.sample', 'Sample logged.');
     ui.toast(t('ui.sampleLogged') + ' · ' + t(`sampleSite.${site.id}`));
     if (sim.samples.size >= SAMPLE_SITES.length) ui.toast(t('rover.logAll'));
   }
@@ -266,9 +289,10 @@ function toggleRover() {
   sim.driving = true;
   sim.rover.enter();
   sim.player.mesh.visible = false;
+  playerSay('player.letsgo', "Let's go.");
   controls.yaw = sim.rover.heading;
-  controls.pitch = 0.3;
-  controls.dist = 13; controls.targetDist = 13;
+  controls.pitch = 0.38;
+  controls.dist = 10.5; controls.targetDist = 10.5;
   ui.toast(t('rover.hint'));
   sfx('open');
 }
@@ -296,7 +320,7 @@ function updateCamera(dt) {
       let diff = ((target - controls.yaw + Math.PI) % (Math.PI * 2)) - Math.PI;
       if (diff < -Math.PI) diff += Math.PI * 2;
       controls.yaw += diff * Math.min(1, dt * 2.6);
-      camTarget.copy(sim.rover.pos).add(new THREE.Vector3(0, 2.2, 0));
+      camTarget.copy(sim.rover.pos).add(new THREE.Vector3(0, 2.45, 0));
     } else {
       camTarget.copy(sim.player.pos).add(new THREE.Vector3(0, 1.35, 0));
     }
@@ -332,6 +356,9 @@ function updateCamera(dt) {
       break;
     }
   }
+  // If the pull-back still lands inside a building, lift the camera above the roofs instead of
+  // staring at the inside of a wall.
+  if (insideBlock(sx, sz, 0.6)) sy = Math.max(sy, 8.6);
   desired.set(sx, Math.max(sy, heightAt(sx, sz) + 1.2), sz);
   camera.position.lerp(desired, started ? Math.min(1, dt * 9) : Math.min(1, dt * 3));
   camera.lookAt(camTarget);
@@ -372,7 +399,7 @@ function updateBarks(now) {
     npc.barkAt = now + 46 + Math.random() * 30;
     npc.speaking = true;
     ui.npcSay(npc, line);
-    say(npc.id, line, { lang });
+    say(npc.id, line, { lang, key: `bark.${npc.id}.${i}` });
     break;
   }
 }
@@ -397,6 +424,7 @@ function loop() {
     world.fill.target.position.set(p.x, 1, p.z);
     world.fill.target.updateMatrixWorld();
     if (sim.rover.stuckWarn) { sim.rover.stuckWarn = false; ui.toast(t('ui.roverStuck')); }
+    if (sim.rover.steepWarn) { sim.rover.steepWarn = false; ui.toast(t('ui.roverSteep'), 'quiet'); }
     updateDust(dt);
     updateBarks(tNow);
     // rover recharges slowly at the garage

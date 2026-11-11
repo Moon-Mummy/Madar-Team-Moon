@@ -1,0 +1,222 @@
+{
+ "crew.maya.greet": {
+  "file": "crew-maya-greet.mp3",
+  "text": "You must be the new cadet. I keep the plan honest. Ask me anything, and I will tell you what I actually know."
+ },
+ "bark.maya.0": {
+  "file": "bark-maya-0.mp3",
+  "text": "Board is clear for now. Enjoy the quiet."
+ },
+ "bark.maya.1": {
+  "file": "bark-maya-1.mp3",
+  "text": "Earth rises in about an hour. Worth a look."
+ },
+ "bark.maya.2": {
+  "file": "bark-maya-2.mp3",
+  "text": "If you see Leo, tell him the drill is at six."
+ },
+ "talk.maya.plan": {
+  "file": "talk-maya-plan.mp3",
+  "text": "Keep the air and water safe, log the samples, and leave room for an early night. Plans change; that is what the table is for."
+ },
+ "talk.maya.day": {
+  "file": "talk-maya-day.mp3",
+  "text": "We keep a 24-hour clock even though the lunar day is 29.5 Earth days. Sleep at ten, wake at six-ish."
+ },
+ "talk.maya.storm": {
+  "file": "talk-maya-storm.mp3",
+  "text": "Storm drill: inside, seal, count everyone, wait for the all-clear. We practise when nothing is wrong."
+ },
+ "talk.maya.help": {
+  "file": "talk-maya-help.mp3",
+  "text": "Inspect anything, open a report, or take the rover. No order, no timer. Stuck? Every task has a hint."
+ },
+ "inc.dust.npc": {
+  "file": "inc-dust-npc.mp3",
+  "text": "That dust is sharp as glass. Put the steps in order so none of it gets inside."
+ },
+ "inc.budget.npc": {
+  "file": "inc-budget-npc.mp3",
+  "text": "Needs before wants. The filter, the seal, the bearing and the nutrients keep us alive and moving."
+ },
+ "inc.schedule.npc": {
+  "file": "inc-schedule-npc.mp3",
+  "text": "Sleep eight, work six to eight, exercise two, eat, and leave room to breathe. It has to add up to 24 exactly."
+ },
+ "inc.storm.npc": {
+  "file": "inc-storm-npc.mp3",
+  "text": "No air to slow the particles and no magnetic field to stop them. Shelter, count everyone, then wait."
+ },
+ "crew.omar.greet": {
+  "file": "crew-omar-greet.mp3",
+  "text": "Careful on the steps, they are slick with dust. I look after the air and the water. Both are loops, not supplies."
+ },
+ "bark.omar.0": {
+  "file": "bark-omar-0.mp3",
+  "text": "Water tastes fine today. I checked twice."
+ },
+ "bark.omar.1": {
+  "file": "bark-omar-1.mp3",
+  "text": "Filters do not clean themselves, sadly."
+ },
+ "bark.omar.2": {
+  "file": "bark-omar-2.mp3",
+  "text": "Mind the wet patch. It is wet because it is dust-free."
+ },
+ "talk.omar.water": {
+  "file": "talk-omar-water.mp3",
+  "text": "Water is a loop. Breath, sweat and washing come back to me, and I filter and test it before it goes out again."
+ },
+ "talk.omar.air": {
+  "file": "talk-omar-air.mp3",
+  "text": "Air is a loop too. We pull carbon dioxide out, split water for oxygen, and let the plants help."
+ },
+ "talk.omar.fix": {
+  "file": "talk-omar-fix.mp3",
+  "text": "Check the sensor before the machine. A dirty sensor has fooled better engineers than me."
+ },
+ "talk.omar.help": {
+  "file": "talk-omar-help.mp3",
+  "text": "Ask what must happen before the next step is safe. That question usually finds the order."
+ },
+ "inc.water.npc": {
+  "file": "inc-water-npc.mp3",
+  "text": "The recycler runs, but the last test was not clean enough to drink. Put the steps in the order you would really do them."
+ },
+ "crew.amina.greet": {
+  "file": "crew-amina-greet.mp3",
+  "text": "Come and see the trays. Everything green here is part of life support, not decoration."
+ },
+ "bark.amina.0": {
+  "file": "bark-amina-0.mp3",
+  "text": "The trays are perking up. Come and look."
+ },
+ "bark.amina.1": {
+  "file": "bark-amina-1.mp3",
+  "text": "Plants do not argue. They just grow or they do not."
+ },
+ "bark.amina.2": {
+  "file": "bark-amina-2.mp3",
+  "text": "That greenhouse is the best air on the ridge."
+ },
+ "talk.amina.plants": {
+  "file": "talk-amina-plants.mp3",
+  "text": "Lettuce, tomatoes, herbs: water, nutrients, red and blue light. No soil, a fraction of the water."
+ },
+ "talk.amina.ice": {
+  "file": "talk-amina-ice.mp3",
+  "text": "Ice sits in craters that never see the Sun. Heat it to vapour, pipe it in, and the loop does the rest."
+ },
+ "talk.amina.science": {
+  "file": "talk-amina-science.mp3",
+  "text": "Observation first. Grey with holes is not the same sentence as cooled from lava."
+ },
+ "talk.amina.help": {
+  "file": "talk-amina-help.mp3",
+  "text": "One variable at a time. Change two things and you learn nothing."
+ },
+ "inc.green.npc": {
+  "file": "inc-green-npc.mp3",
+  "text": "Three trays, one problem. Before we change anything: which two can honestly be compared? A fair test changes one thing."
+ },
+ "inc.sample.npc": {
+  "file": "inc-sample-npc.mp3",
+  "text": "Describe what you see, then match it. Do not guess the name before the description."
+ },
+ "crew.leo.greet": {
+  "file": "crew-leo-greet.mp3",
+  "text": "That rover outside is older than both of us, and it still works. I keep it that way."
+ },
+ "bark.leo.0": {
+  "file": "bark-leo-0.mp3",
+  "text": "I heard the rover before I saw it. Bearings again."
+ },
+ "bark.leo.1": {
+  "file": "bark-leo-1.mp3",
+  "text": "Dust on panels is money on the floor."
+ },
+ "bark.leo.2": {
+  "file": "bark-leo-2.mp3",
+  "text": "Do not drive past sixteen degrees. I will know."
+ },
+ "talk.leo.rover": {
+  "file": "talk-leo-rover.mp3",
+  "text": "Four wheels, 210 kg, 18 km/h, 36 km of careful driving. Slope under 16 degrees, quarter pack in reserve."
+ },
+ "talk.leo.power": {
+  "file": "talk-leo-power.mp3",
+  "text": "Panels make what the light gives them. Dust steals a slice and there is no rain to wash it off."
+ },
+ "talk.leo.comms": {
+  "file": "talk-leo-comms.mp3",
+  "text": "Radio goes straight. A ridge makes a shadow, so we relay from high ground instead of shouting louder."
+ },
+ "talk.leo.help": {
+  "file": "talk-leo-help.mp3",
+  "text": "Send the machines first. A stuck wheel is a repair job, not a rescue."
+ },
+ "inc.solar.npc": {
+  "file": "inc-solar-npc.mp3",
+  "text": "Look at the numbers, cadet. Three arrays agree. One does not. Find it, then keep us inside our power budget."
+ },
+ "inc.rover.npc": {
+  "file": "inc-rover-npc.mp3",
+  "text": "The rover does not care that a route is short. Two rules: stay under 16 degrees, and arrive with a quarter of the battery in hand."
+ },
+ "inc.comms.npc": {
+  "file": "inc-comms-npc.mp3",
+  "text": "Radio goes in straight lines, like light. A ridge does not weaken the signal, it shadows it."
+ },
+ "crew.sofia.greet": {
+  "file": "crew-sofia-greet.mp3",
+  "text": "Sit down if you feel light-headed. One-sixth gravity is kind to your knees and hard on your bones."
+ },
+ "bark.sofia.0": {
+  "file": "bark-sofia-0.mp3",
+  "text": "Stand up slowly; the first minute is the strange one."
+ },
+ "bark.sofia.1": {
+  "file": "bark-sofia-1.mp3",
+  "text": "Sleep is not a reward. It is equipment."
+ },
+ "bark.sofia.2": {
+  "file": "bark-sofia-2.mp3",
+  "text": "Drink something. Yes, now."
+ },
+ "talk.sofia.health": {
+  "file": "talk-sofia-health.mp3",
+  "text": "One-sixth gravity feels lovely and quietly costs bone. Two hours of exercise a day is the treatment."
+ },
+ "talk.sofia.sleep": {
+  "file": "talk-sofia-sleep.mp3",
+  "text": "Fourteen hours on and five asleep is a warning light, not a badge."
+ },
+ "talk.sofia.dust": {
+  "file": "talk-sofia-dust.mp3",
+  "text": "That dust is sharp as glass and does not belong in your lungs. Brush it off outside, every time."
+ },
+ "talk.sofia.help": {
+  "file": "talk-sofia-help.mp3",
+  "text": "If someone goes quiet, ask. A bad mood in a small crew is system information."
+ },
+ "inc.fatigue.npc": {
+  "file": "inc-fatigue-npc.mp3",
+  "text": "Look at the week, not the face. Who is carrying the warning signs, and what actually fixes it?"
+ },
+ "player.copy": {
+  "file": "player-copy.mp3",
+  "text": "Copy that."
+ },
+ "player.omw": {
+  "file": "player-omw.mp3",
+  "text": "On my way."
+ },
+ "player.sample": {
+  "file": "player-sample.mp3",
+  "text": "Sample logged."
+ },
+ "player.letsgo": {
+  "file": "player-letsgo.mp3",
+  "text": "Let's go."
+ }
+}

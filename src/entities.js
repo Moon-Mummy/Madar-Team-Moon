@@ -89,46 +89,124 @@ export function collide(pos, radius = 0.55) {
 // ---------------------------------------------------------------------------------------------
 // Astronaut model
 // ---------------------------------------------------------------------------------------------
+export const HIP_Y = 0.83;
+
+// An Apollo/Artemis-style EVA suit: hard upper torso, chest control box, life-support backpack,
+// gold sun visor over a clear bubble, bearing rings at every joint and boots made for regolith.
 function astronaut(suitHex = 0xf3f6f8) {
   const g = new THREE.Group();
-  const suit = new THREE.MeshStandardMaterial({ color: new THREE.Color(suitHex), roughness: 0.65, metalness: 0.08, flatShading: true });
-  const trim = new THREE.MeshStandardMaterial({ color: 0x39424d, roughness: 0.7, flatShading: true });
-  const pack = new THREE.MeshStandardMaterial({ color: 0xb7c2cb, roughness: 0.55, metalness: 0.3, flatShading: true });
-  const visor = new THREE.MeshStandardMaterial({ color: 0x1b2c3b, roughness: 0.12, metalness: 0.9, emissive: 0x0a2b3a, emissiveIntensity: 0.6 });
-  const box = (w, h, d) => new THREE.BoxGeometry(w, h, d);
-  const add = (geo, mat, p, parent = g) => { const m = new THREE.Mesh(geo, mat); m.position.set(...p); m.castShadow = true; parent.add(m); return m; };
+  const suit = new THREE.MeshStandardMaterial({ color: new THREE.Color(suitHex), roughness: 0.62, metalness: 0.04 });
+  const fabric = new THREE.MeshStandardMaterial({ color: 0xe9eef2, roughness: 0.8, metalness: 0.02 });
+  const trim = new THREE.MeshStandardMaterial({ color: 0x8b959e, roughness: 0.45, metalness: 0.35 });
+  const metal = new THREE.MeshStandardMaterial({ color: 0xcdd6dd, roughness: 0.3, metalness: 0.6 });
+  const gold = new THREE.MeshStandardMaterial({ color: 0xffc760, roughness: 0.06, metalness: 0.45, emissive: 0x7a4f0c, emissiveIntensity: 0.55 });
+  const glove = new THREE.MeshStandardMaterial({ color: 0xd7dde2, roughness: 0.78, metalness: 0.04 });
+  const rubber = new THREE.MeshStandardMaterial({ color: 0x3a4149, roughness: 0.9 });
+  const glow = new THREE.MeshBasicMaterial({ color: 0x9fe6ff });
 
-  const hips = new THREE.Group(); hips.position.y = 0.92; g.add(hips);
-  add(box(0.52, 0.24, 0.34), trim, [0, 0, 0], hips);
-  // torso
-  add(box(0.62, 0.6, 0.4), suit, [0, 0.36, 0], hips);
-  add(box(0.66, 0.16, 0.44), trim, [0, 0.12, 0], hips); // belt
-  // life-support backpack
-  add(box(0.56, 0.62, 0.28), pack, [0, 0.38, -0.33], hips);
-  add(box(0.4, 0.1, 0.05), new THREE.MeshBasicMaterial({ color: 0x8fe6ff }), [0, 0.52, -0.49], hips);
-  // shoulders + arms
-  const armL = new THREE.Group(); armL.position.set(-0.38, 0.6, 0); hips.add(armL);
-  const armR = new THREE.Group(); armR.position.set(0.38, 0.6, 0); hips.add(armR);
+  const sph = r => new THREE.SphereGeometry(r, 16, 12);
+  const cap = (r, len) => new THREE.CapsuleGeometry(r, len, 5, 14);
+  const cyl = (rt, rb, h, seg = 14) => new THREE.CylinderGeometry(rt, rb, h, seg);
+  const box = (w, h, d) => new THREE.BoxGeometry(w, h, d);
+  const tor = (r, t) => new THREE.TorusGeometry(r, t, 8, 22);
+  const put = (geo, mat, p = [0, 0, 0], parent = g) => {
+    const m = new THREE.Mesh(geo, mat);
+    m.position.set(...p); m.castShadow = true; parent.add(m); return m;
+  };
+
+  const hips = new THREE.Group(); hips.position.y = HIP_Y; g.add(hips);
+
+  // --- soft lower torso + waist bearing ------------------------------------------------
+  put(box(0.42, 0.2, 0.3), fabric, [0, -0.1, 0], hips);
+  put(cyl(0.23, 0.245, 0.07), trim, [0, 0.0, 0], hips);
+
+  // --- hard upper torso -----------------------------------------------------------------
+  const torso = put(cap(0.255, 0.24), suit, [0, 0.3, 0], hips);
+  torso.scale.set(1, 1, 0.8);
+  const collar = put(tor(0.23, 0.028), metal, [0, 0.5, 0], hips);
+  collar.rotation.x = Math.PI / 2;
+  // chest control module with its three switches
+  put(box(0.3, 0.2, 0.05), suit, [0, 0.38, 0.19], hips);
+  put(box(0.185, 0.1, 0.06), new THREE.MeshStandardMaterial({ color: 0x2a323b, roughness: 0.5 }), [0, 0.39, 0.235], hips);
+  const switchMats = [new THREE.MeshBasicMaterial({ color: 0x9fe6ff }), new THREE.MeshBasicMaterial({ color: 0xffb066 }), new THREE.MeshBasicMaterial({ color: 0x9df0b5 })];
+  for (let i = -1; i <= 1; i++) put(box(0.03, 0.03, 0.02), switchMats[i + 1], [i * 0.055, 0.405, 0.268], hips);
+  // shoulder patch (crew recolour this)
+  put(box(0.11, 0.07, 0.02), trim, [-0.17, 0.46, 0.2], hips);
+  // two hoses looping to the pack
+  for (const side of [-1, 1]) {
+    const hose = put(tor(0.075, 0.018), rubber, [side * 0.24, 0.3, 0.05], hips);
+    hose.rotation.y = Math.PI / 2;
+  }
+  // life-support backpack: a squared shell with a vent block, ribs, status lights and struts
+  put(box(0.46, 0.5, 0.22), fabric, [0, 0.32, -0.34], hips);
+  put(box(0.48, 0.07, 0.24), metal, [0, 0.585, -0.34], hips);          // top vent block
+  put(box(0.4, 0.03, 0.18), new THREE.MeshStandardMaterial({ color: 0x39424c, roughness: 0.7 }), [0, 0.625, -0.34], hips);
+  for (const side of [-1, 1]) {
+    put(box(0.03, 0.42, 0.02), trim, [side * 0.1, 0.32, -0.455], hips); // ribs
+    put(box(0.06, 0.06, 0.02), side < 0 ? glow : new THREE.MeshBasicMaterial({ color: 0xffb066 }), [side * 0.16, 0.44, -0.455], hips);
+    const hose = put(cyl(0.022, 0.022, 0.16), rubber, [side * 0.21, 0.42, -0.28], hips);
+    hose.rotation.x = 1.1;
+    const strut = put(cyl(0.02, 0.02, 0.2), metal, [side * 0.19, 0.5, -0.22], hips);
+    strut.rotation.x = 0.95;
+  }
+  put(box(0.26, 0.05, 0.02), trim, [0, 0.15, -0.455], hips);           // lower panel seam
+  put(cyl(0.009, 0.009, 0.3), metal, [0.18, 0.75, -0.34], hips);       // antenna
+
+  // --- shoulders and arms ---------------------------------------------------------------
+  const armL = new THREE.Group(); armL.position.set(-0.30, 0.46, 0); hips.add(armL);
+  const armR = new THREE.Group(); armR.position.set(0.30, 0.46, 0); hips.add(armR);
   for (const a of [armL, armR]) {
-    add(box(0.18, 0.5, 0.2), suit, [0, -0.22, 0], a);
-    add(box(0.2, 0.16, 0.22), trim, [0, -0.48, 0], a);
+    put(sph(0.125), suit, [0, 0.02, 0], a);
+    put(cap(0.078, 0.13), suit, [0, -0.12, 0], a);
+    put(sph(0.086), metal, [0, -0.245, 0], a);
+    put(cap(0.072, 0.11), suit, [0, -0.35, 0], a);
+    const cuff = put(tor(0.082, 0.017), metal, [0, -0.44, 0], a);
+    cuff.rotation.x = Math.PI / 2;
+    const hand = put(cap(0.068, 0.07), glove, [0, -0.505, 0.01], a);
+    hand.rotation.x = Math.PI / 2;
+    const thumb = put(cap(0.032, 0.04), glove, [0.045, -0.5, 0.055], a);
+    thumb.rotation.z = Math.PI / 2.4;
   }
-  // helmet
-  const head = new THREE.Group(); head.position.y = 0.95; hips.add(head);
-  const helmet = add(new THREE.SphereGeometry(0.3, 16, 12), suit, [0, 0, 0], head);
-  helmet.scale.set(1, 1.05, 1);
-  const v = add(new THREE.SphereGeometry(0.235, 16, 12), visor, [0, 0.01, 0.13], head);
-  v.scale.set(1, 0.86, 0.7);
-  add(new THREE.CylinderGeometry(0.05, 0.05, 0.1, 8), pack, [0.26, -0.05, 0.06], head).rotation.z = Math.PI / 2;
-  add(box(0.16, 0.05, 0.05), new THREE.MeshBasicMaterial({ color: 0x9fe6ff }), [-0.16, 0.1, 0.26], head);
-  // legs
-  const legL = new THREE.Group(); legL.position.set(-0.16, -0.05, 0); hips.add(legL);
-  const legR = new THREE.Group(); legR.position.set(0.16, -0.05, 0); hips.add(legR);
+
+  // --- helmet ----------------------------------------------------------------------------
+  const head = new THREE.Group(); head.position.y = 0.72; hips.add(head);
+  put(cyl(0.155, 0.175, 0.08), metal, [0, -0.16, 0], head);           // neck ring
+  const shell = put(sph(0.263), suit, [0, 0, 0], head);
+  shell.scale.set(1.0, 1.02, 1.0);
+  // The gold sun visor is a spherical cap sitting proud of the white helmet shell, the way the
+  // real one wraps the front of the bubble. A full sphere here reads as a golden ball.
+  const visorGeo = new THREE.SphereGeometry(0.272, 28, 20, Math.PI * 0.19, Math.PI * 0.62, Math.PI * 0.22, Math.PI * 0.36);
+  const visor = new THREE.Mesh(visorGeo, gold);
+  visor.castShadow = false;
+  head.add(visor);
+  // a thin metal lip around the bottom of the visor
+  const lipGeo = new THREE.SphereGeometry(0.273, 28, 4, Math.PI * 0.19, Math.PI * 0.62, Math.PI * 0.585, Math.PI * 0.022);
+  head.add(new THREE.Mesh(lipGeo, metal));
+  const glint = put(sph(0.026), new THREE.MeshBasicMaterial({ color: 0xfff3d6 }), [-0.085, 0.09, 0.253], head);
+  glint.scale.set(2.1, 0.5, 0.35);
+  put(box(0.17, 0.045, 0.05), glow, [-0.02, 0.175, 0.19], head);       // brow lamp
+  for (const side of [-1, 1]) {
+    const lamp = put(cyl(0.032, 0.032, 0.05), metal, [side * 0.25, 0.0, 0.03], head);
+    lamp.rotation.z = Math.PI / 2;
+  }
+  put(cyl(0.007, 0.007, 0.16), metal, [0.11, 0.24, -0.04], head);      // antenna
+
+  // --- legs -------------------------------------------------------------------------------
+  const legL = new THREE.Group(); legL.position.set(-0.14, -0.04, 0); hips.add(legL);
+  const legR = new THREE.Group(); legR.position.set(0.14, -0.04, 0); hips.add(legR);
   for (const l of [legL, legR]) {
-    add(box(0.22, 0.55, 0.24), suit, [0, -0.3, 0], l);
-    add(box(0.24, 0.18, 0.32), trim, [0, -0.6, 0.04], l);
+    put(cap(0.112, 0.14), suit, [0, -0.16, 0], l);
+    put(sph(0.112), metal, [0, -0.30, 0], l);
+    put(cap(0.096, 0.12), fabric, [0, -0.44, 0], l);
+    put(box(0.2, 0.17, 0.3), suit, [0, -0.66, 0.05], l);
+    put(box(0.19, 0.11, 0.1), trim, [0, -0.655, 0.2], l);
+    put(box(0.21, 0.045, 0.32), rubber, [0, -0.755, 0.055], l);
   }
-  g.userData = { hips, armL, armR, legL, legR, head, suit };
+  const stripe = new THREE.MeshStandardMaterial({ color: 0xd8564a, roughness: 0.6, metalness: 0.05 });
+  put(box(0.045, 0.19, 0.02), stripe, [0.0, -0.16, 0.112], legL);
+  put(box(0.04, 0.17, 0.02), stripe, [0.0, -0.44, 0.098], legL);
+
+  g.userData = { hips, armL, armR, legL, legR, head, suit, visor };
   g.traverse(o => { if (o.isMesh) o.castShadow = true; });
   return g;
 }
@@ -210,7 +288,7 @@ export class Player {
     const u = this.mesh.userData;
     u.legL.rotation.x = k; u.legR.rotation.x = -k;
     u.armL.rotation.x = -k * 0.7; u.armR.rotation.x = k * 0.7;
-    u.hips.position.y = 0.92 + Math.abs(Math.sin(this.walkPhase * 2.4)) * 0.05 * s + Math.sin(this.walkPhase * 0.9) * 0.008;
+    u.hips.position.y = HIP_Y + Math.abs(Math.sin(this.walkPhase * 2.4)) * 0.05 * s + Math.sin(this.walkPhase * 0.9) * 0.008;
     u.head.rotation.y = Math.sin(this.walkPhase * 0.6) * 0.08;
     if (!this.onGround) { u.legL.rotation.x = 0.5; u.legR.rotation.x = -0.3; }
   }
@@ -226,23 +304,26 @@ function npcBody(hex, skin = 0xe8eef2) {
   const u = g.userData;
   const accent = new THREE.MeshStandardMaterial({ color: hex, roughness: 0.5, metalness: 0.15, emissive: hex, emissiveIntensity: 0.08 });
   // chest patch
-  const patch = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.16, 0.03), accent);
-  patch.position.set(0, 0.42, 0.205); u.hips.add(patch);
-  // shoulder flashes
+  const patch = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.09, 0.03), accent);
+  patch.position.set(-0.17, 0.46, 0.212); u.hips.add(patch);
+  // shoulder flashes on the upper arms so they read from the side
   for (const side of [-1, 1]) {
-    const flash = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.24, 0.26), accent);
-    flash.position.set(side * 0.36, 0.62, 0);
-    u.hips.add(flash);
+    const flash = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.13, 0.16), accent);
+    flash.position.set(side * 0.115, -0.02, 0);
+    (side < 0 ? u.armL : u.armR).add(flash);
   }
-  // helmet stripe + visor tint
-  const stripe = new THREE.Mesh(new THREE.TorusGeometry(0.29, 0.026, 6, 20), accent);
-  stripe.position.y = 0.03; stripe.rotation.x = Math.PI / 2;
-  u.head.add(stripe);
-  const visor = u.head.children.find(o => o.material && o.material.color && o.material.color.getHex() === 0x1b2c3b);
-  if (visor) { visor.material = visor.material.clone(); visor.material.emissive = new THREE.Color(hex); visor.material.emissiveIntensity = 0.22; }
+  // painted crown on the helmet: readable from a distance, and it never crosses the visor
+  const crown = new THREE.Mesh(
+    new THREE.SphereGeometry(0.2655, 24, 8, 0, Math.PI * 2, 0, Math.PI * 0.34),
+    new THREE.MeshStandardMaterial({ color: hex, roughness: 0.5, metalness: 0.15, side: THREE.DoubleSide })
+  );
+  crown.scale.set(1.0, 1.02, 1.0);
+  u.head.add(crown);
+  // a hint of colour in the visor reflection keeps the five of them distinct up close
+  if (u.visor) { u.visor.material = u.visor.material.clone(); u.visor.material.emissive = new THREE.Color(hex); u.visor.material.emissiveIntensity = 0.16; }
   // name light on the backpack
-  const lamp = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.04, 0.03), new THREE.MeshBasicMaterial({ color: hex }));
-  lamp.position.set(0, 0.66, -0.48); u.hips.add(lamp);
+  const lamp = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.035, 0.03), new THREE.MeshBasicMaterial({ color: hex }));
+  lamp.position.set(0, 0.55, -0.455); u.hips.add(lamp);
   g.userData.accent = accent;
   g.userData.flash = lamp;
   return g;
@@ -378,7 +459,7 @@ export class Crew {
       u.legR.rotation.x = -swing;
       u.armL.rotation.x = -swing * 0.65;
       u.armR.rotation.x = swing * 0.65;
-      u.hips.position.y = 0.92 + Math.abs(Math.sin(b.step)) * 0.05 * b.moving;
+      u.hips.position.y = HIP_Y + Math.abs(Math.sin(b.step)) * 0.05 * b.moving;
       // idle sway and looking around
       u.hips.rotation.z = Math.sin(t * 0.9 + b.seed) * 0.015;
       u.head.rotation.y = Math.sin(t * 0.5 + b.seed) * 0.22 * (1 - b.moving);
@@ -409,7 +490,6 @@ export class RoverCar {
   exit() { this.occupied = false; this.speed = 0; }
 
   update(dt, input, driving) {
-    const maxSpeed = ROVER.maxSpeed;
     if (!this.occupied) {
       this.speed *= Math.max(0, 1 - dt * 4);
       this.mesh.position.copy(this.pos);
@@ -417,35 +497,45 @@ export class RoverCar {
     }
     const throttle = driving ? (input.forward ? 1 : input.back ? -1 : 0) : 0;
     const steerIn = driving ? ((input.left ? 1 : 0) + (input.right ? -1 : 0)) : 0;
-    const target = throttle * maxSpeed;
+
+    // Look at the ground in the direction the wheels are turning before deciding how fast to go.
+    // Slope is only ever a speed penalty: the LRV was cleared for 16 deg, but a rover that refuses
+    // to move is not a rover.
+    const fx = Math.sin(this.heading), fz = Math.cos(this.heading);
+    const travel = this.speed >= 0 ? 1 : -1;
+    const ahead = 1.9;
+    const slope = slopeDeg(this.pos.x + fx * ahead * travel, this.pos.z + fz * ahead * travel);
+    const overGrade = slope > ROVER.slopeLimit;
+    const grip = traction(slope);
+    this.slipping = slope > SLOPE_SLIP_DEG * 0.75;
+    this.tooSteep = overGrade;
+    if (overGrade) {
+      if (!this.gradeWarned) { this.steepWarn = true; this.gradeWarned = true; }
+    } else this.gradeWarned = false;
+
+    const target = throttle * ROVER.maxSpeed * (overGrade ? 0.38 : 1);
     this.speed += clamp(target - this.speed, -dt * 9, dt * 9);
     if (Math.abs(this.speed) < 0.05) this.speed = 0;
     this.steer += (steerIn - this.steer) * Math.min(1, dt * 5);
     const turn = this.steer * (0.7 + Math.abs(this.speed) * 0.1) * dt * Math.min(1, Math.abs(this.speed) / 4);
     this.heading += turn * Math.sign(this.speed || 1) * 1.4;
 
-    const fx = Math.sin(this.heading), fz = Math.cos(this.heading);
     const step = this.speed * dt;
     const fromX = this.pos.x, fromZ = this.pos.z;
     const nx = this.pos.x + fx * step, nz = this.pos.z + fz * step;
-    // slope check ahead
-    const ahead = 1.9;
-    const slope = slopeDeg(nx + fx * ahead, nz + fz * ahead);
-    const grip = traction(slope);
-    this.slipping = slope > SLOPE_SLIP_DEG * 0.75;
-    this.tooSteep = slope > ROVER.slopeLimit && Math.abs(this.speed) > 0.6;
-    if (this.tooSteep) {
-      this.speed *= Math.max(0, 1 - dt * 6);
-    } else {
-      this.pos.x = nx * (1 - (1 - grip) * 0.35) + this.pos.x * ((1 - grip) * 0.35);
-      this.pos.z = nz * (1 - (1 - grip) * 0.35) + this.pos.z * ((1 - grip) * 0.35);
-      collide(this.pos, 1.6);
-      const d = Math.hypot(this.pos.x, this.pos.z);
-      if (d > ROVER.spawnRadius) { this.pos.x *= ROVER.spawnRadius / d; this.pos.z *= ROVER.spawnRadius / d; this.speed *= 0.4; }
+    // Loose regolith on a bank means less of the commanded step actually happens.
+    this.pos.x = nx * (1 - (1 - grip) * 0.35) + this.pos.x * ((1 - grip) * 0.35);
+    this.pos.z = nz * (1 - (1 - grip) * 0.35) + this.pos.z * ((1 - grip) * 0.35);
+    collide(this.pos, 1.6);
+    const distFromBase = Math.hypot(this.pos.x, this.pos.z);
+    if (distFromBase > ROVER.spawnRadius) {
+      this.pos.x *= ROVER.spawnRadius / distFromBase;
+      this.pos.z *= ROVER.spawnRadius / distFromBase;
+      this.speed *= 0.4;
     }
     // If the rover is pinned against something while the driver pushes on, reverse gently.
     const moved = Math.hypot(this.pos.x - fromX, this.pos.z - fromZ);
-    if (throttle > 0 && Math.abs(this.speed) > 1.4 && moved < Math.abs(this.speed) * dt * 0.3) this.stuck = (this.stuck || 0) + dt;
+    if (Math.abs(throttle) > 0 && Math.abs(this.speed) > 1.0 && moved < Math.abs(this.speed) * dt * 0.3) this.stuck = (this.stuck || 0) + dt;
     else this.stuck = 0;
     if (this.stuck > 1.1) {
       this.speed = -4;
@@ -459,7 +549,7 @@ export class RoverCar {
     const hL = heightAt(this.pos.x - fz * e, this.pos.z + fx * e), hR = heightAt(this.pos.x + fz * e, this.pos.z - fx * e);
     this.mesh.position.copy(this.pos);
     this.mesh.rotation.set(Math.atan2(hB - hF, 2 * e), this.heading, Math.atan2(hR - hL, 2 * e), 'YXZ');
-    for (const w of this.mesh.userData.wheels) w.rotation.y += this.speed * dt * 1.4;
+    for (const w of this.mesh.userData.wheels) w.rotation.x += (this.speed / 0.42) * dt;
     // Battery: 8.7 kWh of silver-zinc packs, 0.24 Wh per metre on the flat, a little more
     // climbing. That works out at the LRV's published 36 km working range.
     const metres = Math.abs(this.speed) * dt;
