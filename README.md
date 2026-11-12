@@ -2,7 +2,9 @@
 
 A single-player, open-ended **lunar colony** you can walk around, in the browser. You are the new cadet at *Madar Outpost* on **Connecting Ridge**, a real candidate region near the Moon's south pole, within sight of Shackleton. Five crew NPCs walk the ridge and **talk to you out loud**; twelve stations are open to inspect; a four-wheel rover takes you to Cabeus crater; and eleven optional situations are built from **measured mission data** rather than invented numbers. Nothing is timed, nothing can fail, and there is no score.
 
-Version 2.1 — the Moon itself, speaking characters, real physics, real tasks, artwork, and a suit and rover that look the part.
+Version 2.2 — the Moon itself, speaking characters, real physics, real tasks, artwork, recorded voices, and a suit and rover that look the part.
+
+> **Godot build:** `Luna-Quest-V1/` is the same idea rebuilt in Godot 4.3 as a walkable 3D game you can step inside the habitat in, with a daily task board that spends *your* energy instead of the base's electricity. Open `Luna-Quest-V1/project.godot`. See its own README.
 
 ---
 

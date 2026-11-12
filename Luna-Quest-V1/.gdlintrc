@@ -1,0 +1,5 @@
+# gdtoolkit style budget for this project
+max-line-length: 200
+max-public-methods: 40
+max-returns: 12
+max-arguments: 10

@@ -1,0 +1,3 @@
+# Godot 4 editor cache and per-machine data. Everything else in this folder is source.
+.godot/
+export_presets.cfg
