@@ -5,8 +5,8 @@ extends CharacterBody3D
 
 const WALK := 3.0
 const RUN := 5.4
-const TIRED_SPEED := 1.2
-const JUMP_V := 2.4
+const TIRED_SPEED := 2.0
+const JUMP_V := 2.6
 const GRAVITY := 1.62
 const DRAIN_WALK := 0.35
 const DRAIN_RUN := 0.9
